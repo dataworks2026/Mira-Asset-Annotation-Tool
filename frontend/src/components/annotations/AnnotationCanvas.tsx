@@ -33,7 +33,8 @@ interface AnnotationCanvasProps {
 }
 
 function generateId(): string {
-  return crypto.randomUUID();
+  // return crypto.randomUUID(); // Use this when on HTTPS
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 const DEFAULT_FILL = "rgba(255, 0, 0, 0.15)";
