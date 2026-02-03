@@ -20,9 +20,24 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# CORS configuration for production (CloudFront + local dev)
+allowed_origins = [
+    settings.FRONTEND_URL,  # From environment variable
+    "http://localhost:3000",  # Local development
+]
+
+# Add CloudFront wildcard support if in production
+if settings.FRONTEND_URL.startswith("https://"):
+    # Extract domain and add api subdomain variant
+    # e.g., https://annotation.domain.com -> also allow https://api.annotation.domain.com
+    domain = settings.FRONTEND_URL.replace("https://", "").split("/")[0]
+    if "api." not in domain:
+        api_domain = f"https://api.{domain}"
+        allowed_origins.append(api_domain)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
