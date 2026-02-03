@@ -3,7 +3,12 @@
     {
       "AllowedHeaders": ["*"],
       "AllowedMethods": ["GET", "PUT"],
-      "AllowedOrigins": ["http://localhost:3000"],
+      "AllowedOrigins": [
+        "http://localhost:3000",
+        "https://*.cloudfront.net",
+        "https://annotation.yourdomain.com",
+        "https://api.annotation.yourdomain.com"
+      ],
       "ExposeHeaders": ["ETag"],
       "MaxAgeSeconds": 3600
     }
