@@ -4,7 +4,7 @@ import { AnnotationRect } from "./AnnotationCanvas";
 import {
   getDamageTypeByCode,
   getSeverityByLevel,
-  getComponentByCode,
+  formatStructuralSegments,
 } from "@/lib/referenceData";
 
 interface AnnotationListProps {
@@ -39,10 +39,26 @@ export function AnnotationList({
         const severity = annot.severity
           ? getSeverityByLevel(annot.severity)
           : null;
-        const component = annot.component
-          ? getComponentByCode(annot.component)
-          : null;
+
+        // NEW: Structural segments (preferred)
+        const structuralSegments = annot.structural_segments || [];
+        const hasStructuralSegments = structuralSegments.length > 0;
+        const segmentsDisplay = formatStructuralSegments(structuralSegments);
+
+        // OLD: Legacy component codes (deprecated)
+        const componentCodes = annot.component && annot.component.length > 0
+          ? annot.component
+          : [];
+        const hasComponents = componentCodes.length > 0;
+
         const isSelected = annot.annotation_id === selectedId;
+
+        // Create summary label: DAMAGE_CODE-SEVERITY | SEGMENTS
+        // Example: "CO-2 | SZ" or "BG-3 | BH & SZ"
+        let summaryLabel = "";
+        if (damageType && severity && hasStructuralSegments) {
+          summaryLabel = `${damageType.code}-${severity.level} | ${segmentsDisplay}`;
+        }
 
         return (
           <li
@@ -63,16 +79,23 @@ export function AnnotationList({
                   />
                 )}
                 <span className="font-medium text-gray-800 truncate">
-                  {damageType
+                  {summaryLabel || (damageType
                     ? damageType.label
-                    : `${annot.shape_type === "ellipse" ? "Oval" : "Box"} ${index + 1}`}
+                    : `${annot.shape_type === "ellipse" ? "Oval" : "Box"} ${index + 1}`)}
                 </span>
               </div>
-              {(severity || component) && (
-                <div className="text-xs text-gray-500 mt-0.5 ml-4">
-                  {severity && `Sev ${severity.level}`}
-                  {severity && component && " · "}
-                  {component && component.code}
+
+              {/* Show warning if no structural segments */}
+              {!hasStructuralSegments && damageType && (
+                <div className="text-xs text-amber-600 mt-0.5 ml-4">
+                  ⚠️ Needs structural segment assignment
+                </div>
+              )}
+
+              {/* Show legacy components if present (deprecated) */}
+              {hasComponents && !hasStructuralSegments && (
+                <div className="text-xs text-gray-400 mt-0.5 ml-4">
+                  Legacy: {componentCodes.join(", ")}
                 </div>
               )}
             </div>

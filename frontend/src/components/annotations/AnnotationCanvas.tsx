@@ -7,9 +7,9 @@ import {
   useImperativeHandle,
   forwardRef,
 } from "react";
-import { Canvas, Rect, Ellipse, FabricImage, FabricObject, TPointerEventInfo } from "fabric";
+import { Canvas, Rect, Ellipse, FabricImage, FabricObject, FabricText, TPointerEventInfo } from "fabric";
 import { Annotation, BoundingBox, ShapeType } from "@/types/image";
-import { getSeverityByLevel } from "@/lib/referenceData";
+import { getSeverityByLevel, SEVERITY_LEVELS } from "@/lib/referenceData";
 
 export type CanvasTool = "select" | "draw" | "draw_ellipse";
 
@@ -40,6 +40,14 @@ function generateId(): string {
 const DEFAULT_FILL = "rgba(255, 0, 0, 0.15)";
 const DEFAULT_STROKE = "rgba(255, 0, 0, 0.8)";
 
+const SEVERITY_COLORS: Record<number, string> = {
+  1: "rgba(34, 197, 94, 0.85)",
+  2: "rgba(234, 179, 8, 0.85)",
+  3: "rgba(249, 115, 22, 0.85)",
+  4: "rgba(239, 68, 68, 0.85)",
+};
+const DEFAULT_LABEL_BG = "rgba(255, 0, 0, 0.85)";
+
 function getShapeStyle(severity?: number) {
   const sev = severity ? getSeverityByLevel(severity) : null;
   return {
@@ -55,7 +63,24 @@ function getShapeStyle(severity?: number) {
   };
 }
 
-type AnnotatedFabricObject = FabricObject & { annotationId?: string };
+function buildLabel(annot: AnnotationRect): string {
+  const parts: string[] = [];
+  if (annot.damage_type) {
+    parts.push(annot.damage_type);
+  }
+  if (annot.severity) {
+    const sevData = SEVERITY_LEVELS.find((s) => s.level === annot.severity);
+    parts.push(`Sev ${annot.severity}` + (sevData ? ` (${sevData.label})` : ""));
+  }
+  // Get structural segments
+  const segments = annot.structural_segments || annot.component;
+  if (segments && segments.length > 0) {
+    parts.push(segments.join(", "));
+  }
+  return parts.join(" | ");
+}
+
+type AnnotatedFabricObject = FabricObject & { annotationId?: string; isLabel?: boolean };
 
 const AnnotationCanvasInner = forwardRef<
   AnnotationCanvasRef,
@@ -115,13 +140,13 @@ const AnnotationCanvasInner = forwardRef<
   // Sync shapes to canvas
   const syncShapesToCanvas = useCallback(
     (canvas: Canvas, annots: AnnotationRect[]) => {
-      // Remove existing shapes
+      // Remove existing shapes and labels
       const objects = canvas.getObjects().filter(
-        (obj) => obj.type === "rect" || obj.type === "ellipse"
+        (obj) => obj.type === "rect" || obj.type === "ellipse" || (obj as AnnotatedFabricObject).isLabel
       );
       objects.forEach((obj) => canvas.remove(obj));
 
-      // Add annotation shapes
+      // Add annotation shapes and labels
       annots.forEach((annot) => {
         const canvasBbox = imageToCanvas(annot.bbox);
         const shapeType = annot.shape_type || "rect";
@@ -152,6 +177,37 @@ const AnnotationCanvasInner = forwardRef<
 
         (shape as AnnotatedFabricObject).annotationId = annot.annotation_id;
         canvas.add(shape);
+
+        // Add label text above the shape
+        const labelText = buildLabel(annot);
+        if (labelText) {
+          const fontSize = Math.max(10, Math.min(14, canvasBbox.width / 12));
+          const bgColor = annot.severity
+            ? SEVERITY_COLORS[annot.severity] || DEFAULT_LABEL_BG
+            : DEFAULT_LABEL_BG;
+
+          const label = new FabricText(labelText, {
+            left: canvasBbox.x,
+            top: canvasBbox.y - fontSize - 6,
+            fontSize,
+            fill: "#ffffff",
+            backgroundColor: bgColor,
+            fontFamily: "sans-serif",
+            fontWeight: "bold",
+            padding: 3,
+            selectable: false,
+            evented: false,
+          });
+          (label as AnnotatedFabricObject).annotationId = annot.annotation_id;
+          (label as AnnotatedFabricObject).isLabel = true;
+
+          // If label would go off-canvas top, place below shape
+          if ((label.top || 0) < 0) {
+            label.set({ top: canvasBbox.y + canvasBbox.height + 2 });
+          }
+
+          canvas.add(label);
+        }
       });
 
       canvas.renderAll();
@@ -248,7 +304,7 @@ const AnnotationCanvasInner = forwardRef<
       canvas.defaultCursor = "default";
       canvas.hoverCursor = "move";
       canvas.getObjects().forEach((obj) => {
-        if (obj.type === "rect" || obj.type === "ellipse") {
+        if ((obj.type === "rect" || obj.type === "ellipse") && !(obj as AnnotatedFabricObject).isLabel) {
           obj.selectable = !readOnly;
           obj.evented = !readOnly;
         }
@@ -434,7 +490,11 @@ const AnnotationCanvasInner = forwardRef<
       const annotationId = (active as AnnotatedFabricObject).annotationId;
       if (!annotationId) return;
 
-      canvas.remove(active);
+      // Remove shape and its label
+      const toRemove = canvas.getObjects().filter(
+        (o) => (o as AnnotatedFabricObject).annotationId === annotationId
+      );
+      toRemove.forEach((o) => canvas.remove(o));
       canvas.discardActiveObject();
       canvas.renderAll();
 
@@ -449,15 +509,13 @@ const AnnotationCanvasInner = forwardRef<
       const canvas = fabricRef.current;
       if (!canvas || readOnly) return;
 
-      const obj = canvas
-        .getObjects()
-        .filter((o) => o.type === "rect" || o.type === "ellipse")
-        .find((o) => (o as AnnotatedFabricObject).annotationId === id);
-      if (obj) {
-        canvas.remove(obj);
-        canvas.discardActiveObject();
-        canvas.renderAll();
-      }
+      // Remove shape and its label
+      const toRemove = canvas.getObjects().filter(
+        (o) => (o as AnnotatedFabricObject).annotationId === id
+      );
+      toRemove.forEach((o) => canvas.remove(o));
+      canvas.discardActiveObject();
+      canvas.renderAll();
 
       const updated = annotationsRef.current.filter(
         (a) => a.annotation_id !== id
