@@ -5,17 +5,11 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useInspections } from "@/hooks/useInspections";
 import { ErrorAlert } from "@/components/ui/ErrorAlert";
-
-const ASSET_TYPES = [
-  "pier",
-  "bridge",
-  "seawall",
-  "bulkhead",
-  "wharf",
-  "dock",
-  "retaining_wall",
-  "other",
-];
+import {
+  INDUSTRY_CATEGORIES,
+  getAssetTypesForCategory,
+  IndustryCategory,
+} from "@/lib/referenceData";
 
 export function InspectionForm() {
   const router = useRouter();
@@ -27,13 +21,16 @@ export function InspectionForm() {
 
   const [form, setForm] = useState({
     inspection_date: new Date().toISOString().split("T")[0],
+    industry_category: "coastal" as IndustryCategory,
     asset_name: "",
-    asset_type: ASSET_TYPES[0],
     inspector_name: user?.full_name || "",
     inspection_type: "",
     weather_conditions: "",
     notes: "",
   });
+
+  // Get available asset types based on selected industry category
+  const availableAssetTypes = getAssetTypesForCategory(form.industry_category);
 
   function updateField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -46,7 +43,10 @@ export function InspectionForm() {
 
     try {
       const result = await createInspection({
-        ...form,
+        industry_category: form.industry_category,
+        asset_name: form.asset_name,
+        inspection_date: form.inspection_date,
+        inspector_name: form.inspector_name,
         inspection_type: form.inspection_type || undefined,
         weather_conditions: form.weather_conditions || undefined,
         notes: form.notes || undefined,
@@ -63,6 +63,64 @@ export function InspectionForm() {
     <form onSubmit={handleSubmit} className="space-y-5 max-w-lg">
       <ErrorAlert message={error} />
 
+      {/* Industry Category */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700">
+          Industry Category *
+        </label>
+        <select
+          required
+          value={form.industry_category}
+          onChange={(e) => updateField("industry_category", e.target.value)}
+          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          {INDUSTRY_CATEGORIES.map((cat) => (
+            <option key={cat.value} value={cat.value}>
+              {cat.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-gray-500">
+          Determines available asset types, damage types, and components
+        </p>
+      </div>
+
+      {/* Asset Name */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700">
+          Asset/Location Name *
+        </label>
+        <input
+          type="text"
+          required
+          value={form.asset_name}
+          onChange={(e) => updateField("asset_name", e.target.value)}
+          placeholder="e.g. Port of Miami Terminal A"
+          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          Asset types (pier, bulkhead, etc.) are assigned per image during annotation
+        </p>
+      </div>
+
+      {/* Available Asset Types (Info only) */}
+      <div className="rounded-md bg-blue-50 p-3">
+        <p className="text-xs font-medium text-blue-700 mb-1">
+          Available asset types for {form.industry_category}:
+        </p>
+        <div className="flex flex-wrap gap-1">
+          {availableAssetTypes.map((at) => (
+            <span
+              key={at.value}
+              className="inline-block rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800"
+            >
+              {at.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Inspection Date */}
       <div>
         <label className="block text-sm font-medium text-gray-700">
           Inspection Date *
@@ -76,38 +134,7 @@ export function InspectionForm() {
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700">
-          Asset Name *
-        </label>
-        <input
-          type="text"
-          required
-          value={form.asset_name}
-          onChange={(e) => updateField("asset_name", e.target.value)}
-          placeholder="e.g. Slip 1 North Bulkhead"
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700">
-          Asset Type *
-        </label>
-        <select
-          required
-          value={form.asset_type}
-          onChange={(e) => updateField("asset_type", e.target.value)}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
-          {ASSET_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-            </option>
-          ))}
-        </select>
-      </div>
-
+      {/* Inspector Name */}
       <div>
         <label className="block text-sm font-medium text-gray-700">
           Inspector Name *
@@ -121,6 +148,7 @@ export function InspectionForm() {
         />
       </div>
 
+      {/* Inspection Type */}
       <div>
         <label className="block text-sm font-medium text-gray-700">
           Inspection Type
@@ -134,6 +162,7 @@ export function InspectionForm() {
         />
       </div>
 
+      {/* Weather Conditions */}
       <div>
         <label className="block text-sm font-medium text-gray-700">
           Weather Conditions
@@ -142,11 +171,12 @@ export function InspectionForm() {
           type="text"
           value={form.weather_conditions}
           onChange={(e) => updateField("weather_conditions", e.target.value)}
-          placeholder="e.g. Clear, 72°F"
+          placeholder="e.g. Clear, 72F"
           className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
+      {/* Notes */}
       <div>
         <label className="block text-sm font-medium text-gray-700">Notes</label>
         <textarea
@@ -158,6 +188,7 @@ export function InspectionForm() {
         />
       </div>
 
+      {/* Submit Buttons */}
       <div className="flex gap-3 pt-2">
         <button
           type="submit"
