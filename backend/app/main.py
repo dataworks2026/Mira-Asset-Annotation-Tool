@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.database import get_client
 from app.auth.router import router as auth_router
+from app.assets.router import router as assets_router
 from app.inspections.router import router as inspections_router
 from app.images.router import router as images_router
 from app.images.s3_service import S3ServiceUnavailableError
@@ -65,6 +66,7 @@ async def sqs_unavailable_handler(request: Request, exc: SQSServiceUnavailableEr
 
 
 app.include_router(auth_router)
+app.include_router(assets_router)
 app.include_router(inspections_router)
 app.include_router(images_router)
 
