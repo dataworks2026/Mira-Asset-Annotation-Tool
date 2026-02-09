@@ -55,7 +55,7 @@ export function DeleteImageModal({
             <span className="text-sm text-gray-700">
               Also permanently delete files from S3
               <span className="block text-xs text-red-600 mt-1">
-                ⚠️ Cannot be undone! Only check this if you're absolutely sure.
+                ⚠️ Cannot be undone! Only check this if you are absolutely sure.
               </span>
             </span>
           </label>
