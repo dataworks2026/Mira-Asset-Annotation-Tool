@@ -1,8 +1,12 @@
 from functools import lru_cache
+import logging
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class S3ServiceUnavailableError(Exception):
@@ -88,6 +92,61 @@ class S3Service:
             Body=body,
             ContentType=content_type,
         )
+
+    def delete_object(self, key: str) -> bool:
+        """Delete a single object from S3. Returns True if successful."""
+        self._check_available()
+        try:
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
+            logger.info(f"Deleted S3 object: {key}")
+            return True
+        except ClientError:
+            logger.exception(f"Failed to delete S3 object: {key}")
+            return False
+
+    def delete_objects_by_prefix(self, prefix: str) -> tuple[int, int]:
+        """
+        Delete all objects with a given prefix.
+        Returns (success_count, failure_count).
+        Handles pagination for large sets.
+        """
+        self._check_available()
+        success_count = 0
+        failure_count = 0
+
+        try:
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            pages = paginator.paginate(Bucket=self.bucket_name, Prefix=prefix)
+
+            for page in pages:
+                if 'Contents' not in page:
+                    continue
+
+                objects_to_delete = [{'Key': obj['Key']} for obj in page['Contents']]
+
+                if objects_to_delete:
+                    try:
+                        response = self.s3_client.delete_objects(
+                            Bucket=self.bucket_name,
+                            Delete={'Objects': objects_to_delete}
+                        )
+                        deleted = response.get('Deleted', [])
+                        errors = response.get('Errors', [])
+                        success_count += len(deleted)
+                        failure_count += len(errors)
+
+                        if deleted:
+                            logger.info(f"Deleted {len(deleted)} objects with prefix: {prefix}")
+                        if errors:
+                            logger.error(f"Failed to delete {len(errors)} objects with prefix: {prefix}")
+                    except ClientError:
+                        logger.exception(f"Failed to delete batch from prefix: {prefix}")
+                        failure_count += len(objects_to_delete)
+        except ClientError:
+            logger.exception(f"Failed to list objects with prefix: {prefix}")
+            return success_count, failure_count
+
+        return success_count, failure_count
 
 
 @lru_cache(maxsize=1)

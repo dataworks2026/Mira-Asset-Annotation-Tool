@@ -1,4 +1,5 @@
 import io
+import json
 import logging
 import re
 import uuid
@@ -8,8 +9,10 @@ from datetime import datetime, timezone
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.images.repository import ImageRepository
-from app.images.s3_service import get_s3_service
+from app.images.renderer import DAMAGE_LABELS, SEVERITY_LABELS
+from app.images.s3_service import get_s3_service, S3ServiceUnavailableError
 from app.images.schemas import AnnotationStatusEnum
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +37,8 @@ def create_upload_urls(
     repo = image_repo or ImageRepository()
     now = datetime.now(timezone.utc)
 
-    asset_name = _sanitize_folder_name(inspection.get("asset_name", "Unknown"))
-    inspection_date = inspection.get("inspection_date", "undated")
+    # Check if this is a legacy inspection (no asset_id) or new format
+    use_v2_format = "asset_id" in inspection
 
     results = []
     for f in files:
@@ -43,7 +46,18 @@ def create_upload_urls(
             continue
 
         image_id = str(uuid.uuid4())
-        s3_key = f"{asset_name}/{inspection_date}/Raw/{f['filename']}"
+
+        # Generate S3 key based on format version
+        if use_v2_format:
+            # NEW FORMAT v2: {inspection_id}/raw/{image_id}_{filename}
+            s3_key = f"{inspection_id}/raw/{image_id}_{f['filename']}"
+            s3_key_version = "v2"
+        else:
+            # LEGACY FORMAT v1: {asset_name}/{inspection_date}/Raw/{filename}
+            asset_name = _sanitize_folder_name(inspection.get("asset_name", "Unknown"))
+            inspection_date = inspection.get("inspection_date", "undated")
+            s3_key = f"{asset_name}/{inspection_date}/Raw/{f['filename']}"
+            s3_key_version = "v1"
 
         upload_url = s3.generate_presigned_upload_url(
             key=s3_key,
@@ -54,12 +68,18 @@ def create_upload_urls(
             "image_id": image_id,
             "inspection_id": inspection_id,
             "filename": f["filename"],
+            "original_filename": f["filename"],
             "s3_key": s3_key,
+            "s3_key_version": s3_key_version,
+            "s3_key_annotated": None,
             "content_type": f["content_type"],
+            "file_size": f.get("file_size"),
             "annotation_status": AnnotationStatusEnum.not_started.value,
             "annotations": [],
             "num_annotations": 0,
             "uploaded_at": now,
+            "updated_at": None,
+            "deleted_at": None,
         }
         repo.insert(doc)
 
@@ -75,14 +95,21 @@ def create_upload_urls(
 
 def get_images_by_inspection(
     inspection_id: str,
+    include_urls: bool = True,
     image_repo: ImageRepository | None = None,
 ) -> list[dict]:
-    s3 = get_s3_service()
     repo = image_repo or ImageRepository()
-
     results = repo.find_by_inspection(inspection_id)
-    for doc in results:
-        doc["s3_url"] = s3.generate_presigned_download_url(doc["s3_key"])
+
+    # Only generate presigned URLs if requested (for performance)
+    if include_urls:
+        s3 = get_s3_service()
+        for doc in results:
+            doc["s3_url"] = s3.generate_presigned_download_url(doc["s3_key"])
+    else:
+        # Set empty string for s3_url when not included
+        for doc in results:
+            doc["s3_url"] = ""
 
     return results
 
@@ -138,11 +165,97 @@ def get_image_by_id(
     return doc
 
 
+def update_image_metadata(
+    image_id: str,
+    updates: dict,
+    image_repo: ImageRepository | None = None,
+) -> dict | None:
+    """Update image metadata (e.g., asset_type, segment, elevation, side_face, latitude, longitude)."""
+    s3 = get_s3_service()
+    repo = image_repo or ImageRepository()
+
+    doc = repo.find_by_id(image_id)
+    if doc is None:
+        return None
+
+    # Filter to allowed fields - includes spatial awareness fields and GPS coordinates
+    allowed_fields = {"asset_type", "segment", "elevation", "side_face", "latitude", "longitude"}
+    safe_updates = {k: v for k, v in updates.items() if k in allowed_fields}
+
+    if safe_updates:
+        for field, value in safe_updates.items():
+            repo.update_field(image_id, field, value)
+
+    updated = repo.find_by_id(image_id)
+    if updated is None:
+        return None
+    updated["s3_url"] = s3.generate_presigned_download_url(updated["s3_key"])
+    return updated
+
+
+def _build_annotations_json(image_docs: list[dict], inspection_id: str) -> str:
+    """Build a CV-ready annotations JSON for all images in the inspection."""
+    images_out = []
+    for doc in image_docs:
+        annotations_out = []
+        for ann in doc.get("annotations", []):
+            damage_code = ann.get("damage_type")
+            severity = ann.get("severity")
+            components = ann.get("component")
+            # Normalize component to list for backwards compat
+            if isinstance(components, str):
+                components = [components] if components else []
+            elif not components:
+                components = []
+
+            annotations_out.append({
+                "annotation_id": ann.get("annotation_id"),
+                "bbox": ann.get("bbox"),
+                "shape_type": ann.get("shape_type", "rect"),
+                "damage_type": {
+                    "code": damage_code,
+                    "label": DAMAGE_LABELS.get(damage_code, "") if damage_code else "",
+                } if damage_code else None,
+                "severity": {
+                    "level": severity,
+                    "label": SEVERITY_LABELS.get(severity, "") if severity else "",
+                } if severity else None,
+                "components": [
+                    {"code": c} for c in components
+                ],
+                "notes": ann.get("notes"),
+                # Spatial Awareness - defect tracking
+                "defect_id": ann.get("defect_id"),
+            })
+        images_out.append({
+            "image_id": doc["image_id"],
+            "filename": doc["filename"],
+            "s3_key": doc["s3_key"],
+            # Spatial Awareness - image location context
+            "asset_type": doc.get("asset_type"),
+            "segment": doc.get("segment"),
+            "elevation": doc.get("elevation"),
+            "side_face": doc.get("side_face"),
+            "annotation_status": doc.get("annotation_status"),
+            "num_annotations": doc.get("num_annotations", len(annotations_out)),
+            "annotations": annotations_out,
+        })
+
+    output = {
+        "inspection_id": inspection_id,
+        "export_version": "1.1",  # Bumped version for spatial awareness fields
+        "total_images": len(images_out),
+        "total_annotations": sum(len(img["annotations"]) for img in images_out),
+        "images": images_out,
+    }
+    return json.dumps(output, indent=2)
+
+
 def build_annotated_zip(
     inspection_id: str,
     image_repo: ImageRepository | None = None,
 ) -> bytes:
-    """Build ZIP of annotated images."""
+    """Build ZIP of annotated images and annotations JSON."""
     s3 = get_s3_service()
     repo = image_repo or ImageRepository()
 
@@ -166,4 +279,82 @@ def build_annotated_zip(
 
             zf.writestr(doc["filename"], image_bytes)
 
+        # Add annotations JSON
+        annotations_json = _build_annotations_json(image_docs, inspection_id)
+        zf.writestr("annotations.json", annotations_json)
+
     return buf.getvalue()
+
+
+def delete_image(
+    image_id: str,
+    delete_s3_files: bool = False,
+    image_repo: ImageRepository | None = None,
+) -> dict:
+    """
+    Soft delete an image and optionally delete S3 files.
+
+    Args:
+        image_id: The image to delete
+        delete_s3_files: If True, also delete S3 files
+        image_repo: Optional repository for testing
+
+    Returns:
+        dict with deletion summary
+
+    Raises:
+        HTTPException: If image not found
+    """
+    repo = image_repo or ImageRepository()
+
+    # Get image data (including S3 keys) before soft delete
+    image_data = repo.find_s3_keys_by_id(image_id)
+    if not image_data:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # Soft delete the image
+    deleted = repo.soft_delete(image_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Image not found or already deleted")
+
+    result = {
+        "message": "Image deleted successfully",
+        "image_id": image_id,
+        "inspection_id": image_data.get("inspection_id"),
+        "s3_files_deleted": False,
+    }
+
+    # Optional S3 deletion
+    if delete_s3_files:
+        try:
+            s3 = get_s3_service()
+            if s3.available:
+                success = 0
+                failures = 0
+
+                # Delete raw image
+                if image_data.get("s3_key"):
+                    if s3.delete_object(image_data["s3_key"]):
+                        success += 1
+                    else:
+                        failures += 1
+
+                # Delete annotated image if exists
+                if image_data.get("s3_key_annotated"):
+                    if s3.delete_object(image_data["s3_key_annotated"]):
+                        success += 1
+                    else:
+                        failures += 1
+
+                result["s3_files_deleted"] = True
+                result["s3_success_count"] = success
+                result["s3_failure_count"] = failures
+                logger.info(f"Deleted S3 files for image {image_id}: {success} succeeded, {failures} failed")
+        except S3ServiceUnavailableError:
+            logger.warning("S3 not configured — skipping file deletion")
+            result["s3_warning"] = "S3 not configured, files not deleted"
+        except Exception as e:
+            logger.exception(f"Error deleting S3 files for image {image_id}")
+            result["s3_error"] = str(e)
+
+    return result

@@ -27,6 +27,42 @@ class DamageTypeEnum(str, Enum):
     RS = "RS"
 
 
+# --- Spatial Awareness Enums ---
+
+class ElevationEnum(str, Enum):
+    """Elevation zones for coastal/marine structures"""
+    above_water = "above_water"
+    splash_zone = "splash_zone"
+    tidal_zone = "tidal_zone"
+    submerged = "submerged"
+    buried = "buried"
+    # Generic options
+    top = "top"
+    middle = "middle"
+    bottom = "bottom"
+
+
+class SideFaceEnum(str, Enum):
+    """Side/face orientation of the structure"""
+    # Cardinal directions
+    north = "north"
+    south = "south"
+    east = "east"
+    west = "west"
+    # Relative to water/environment
+    seaward = "seaward"
+    landward = "landward"
+    upstream = "upstream"
+    downstream = "downstream"
+    # Generic
+    front = "front"
+    back = "back"
+    left = "left"
+    right = "right"
+    interior = "interior"
+    exterior = "exterior"
+
+
 # Upload request/response
 
 class FileInfo(BaseModel):
@@ -35,7 +71,7 @@ class FileInfo(BaseModel):
 
 
 class UploadUrlRequest(BaseModel):
-    files: list[FileInfo]
+    files: list[FileInfo] = Field(..., max_length=100, description="Maximum 100 files per request")
 
 
 class PresignedUrlInfo(BaseModel):
@@ -64,8 +100,22 @@ class AnnotationData(BaseModel):
     shape_type: Optional[ShapeTypeEnum] = None
     damage_type: Optional[DamageTypeEnum] = None
     severity: Optional[int] = Field(None, ge=1, le=4)
-    component: Optional[str] = Field(None, max_length=10)
+    # DEPRECATED: Old component field - replaced by structural_segments
+    component: Optional[list[str]] = Field(None, description="(DEPRECATED) Use structural_segments instead")
+    # NEW: Structural segments - which components this damage affects
+    structural_segments: Optional[list[str]] = Field(
+        None,
+        min_length=1,
+        description="Structural component codes (e.g., ['BH', 'SZ']). Required for new annotations."
+    )
     notes: Optional[str] = Field(None, max_length=2000)
+    # Spatial Awareness - Defect tracking across inspections
+    defect_id: Optional[str] = Field(
+        None,
+        max_length=50,
+        pattern=r"^[A-Z0-9-]+$",
+        description="Unique defect identifier for tracking across inspections (e.g., PIER-CR-001)"
+    )
 
 
 class ImageResponse(BaseModel):
@@ -75,6 +125,14 @@ class ImageResponse(BaseModel):
     s3_url: str
     s3_key: str
     content_type: str
+    asset_type: Optional[str] = None  # Asset type for this specific image (pier, bulkhead, etc.)
+    # Spatial Awareness fields - location context for the image
+    segment: Optional[str] = Field(None, description="Segment/bay of the asset (e.g., 'Segment 1', 'Bay 3', 'Span A-B')")
+    elevation: Optional[str] = Field(None, description="Elevation zone (e.g., 'above_water', 'splash_zone', 'submerged')")
+    side_face: Optional[str] = Field(None, description="Side/face orientation (e.g., 'north', 'seaward', 'interior')")
+    # GPS coordinates
+    latitude: Optional[float] = Field(None, ge=-90, le=90, description="Latitude coordinate (-90 to 90)")
+    longitude: Optional[float] = Field(None, ge=-180, le=180, description="Longitude coordinate (-180 to 180)")
     annotation_status: AnnotationStatusEnum
     annotations: list[AnnotationData]
     num_annotations: int
@@ -90,3 +148,16 @@ class ImageListResponse(BaseModel):
 
 class SaveAnnotationsRequest(BaseModel):
     annotations: list[AnnotationData]
+
+
+# Update image metadata
+
+class UpdateImageRequest(BaseModel):
+    asset_type: Optional[str] = Field(None, max_length=100, description="Asset type for this image")
+    # Spatial Awareness fields
+    segment: Optional[str] = Field(None, max_length=100, description="Segment/bay of the asset")
+    elevation: Optional[str] = Field(None, max_length=50, description="Elevation zone")
+    side_face: Optional[str] = Field(None, max_length=50, description="Side/face orientation")
+    # GPS coordinates
+    latitude: Optional[float] = Field(None, ge=-90, le=90, description="Latitude coordinate")
+    longitude: Optional[float] = Field(None, ge=-180, le=180, description="Longitude coordinate")

@@ -17,7 +17,7 @@ class ImageRepository:
     def find_by_inspection(self, inspection_id: str) -> list[dict]:
         results = []
         for doc in self._collection.find(
-            {"inspection_id": inspection_id}, _PROJECTION
+            {"inspection_id": inspection_id, "deleted_at": None}, _PROJECTION
         ).sort("uploaded_at", 1):
             self._serialize_dates(doc)
             results.append(doc)
@@ -32,6 +32,7 @@ class ImageRepository:
     def update_annotations(
         self, image_id: str, annotations: list[dict], num: int, status: str
     ) -> None:
+        from datetime import datetime, timezone
         self._collection.update_one(
             {"image_id": image_id},
             {
@@ -39,14 +40,63 @@ class ImageRepository:
                     "annotations": annotations,
                     "num_annotations": num,
                     "annotation_status": status,
+                    "updated_at": datetime.now(timezone.utc),
                 }
             },
         )
 
+    def update_field(self, image_id: str, field: str, value) -> None:
+        """Update a single field on an image."""
+        from datetime import datetime, timezone
+        self._collection.update_one(
+            {"image_id": image_id},
+            {"$set": {field: value, "updated_at": datetime.now(timezone.utc)}},
+        )
+
     def count_by_inspection(self, inspection_id: str) -> int:
         return self._collection.count_documents(
-            {"inspection_id": inspection_id}
+            {"inspection_id": inspection_id, "deleted_at": None}
         )
+
+    def soft_delete_by_inspection(self, inspection_id: str) -> int:
+        """Soft delete all images for an inspection. Returns count of deleted images."""
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        result = self._collection.update_many(
+            {"inspection_id": inspection_id, "deleted_at": None},
+            {"$set": {"deleted_at": now, "updated_at": now}},
+        )
+        return result.modified_count
+
+    def find_s3_keys_by_inspection(self, inspection_id: str) -> list[dict]:
+        """Get all S3 keys for an inspection (including soft-deleted images for cleanup)."""
+        results = []
+        for doc in self._collection.find(
+            {"inspection_id": inspection_id},
+            {"_id": 0, "s3_key": 1, "s3_key_annotated": 1, "s3_key_version": 1}
+        ):
+            results.append(doc)
+        return results
+
+    def soft_delete(self, image_id: str) -> bool:
+        """Soft delete a single image. Returns True if image was found and deleted."""
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        result = self._collection.update_one(
+            {"image_id": image_id, "deleted_at": None},
+            {"$set": {"deleted_at": now, "updated_at": now}},
+        )
+        return result.modified_count > 0
+
+    def find_s3_keys_by_id(self, image_id: str) -> dict | None:
+        """Get S3 keys for a single image."""
+        doc = self._collection.find_one(
+            {"image_id": image_id},
+            {"_id": 0, "s3_key": 1, "s3_key_annotated": 1, "s3_key_version": 1, "inspection_id": 1}
+        )
+        return doc
 
     @staticmethod
     def _serialize_dates(doc: dict) -> None:

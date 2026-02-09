@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
 from app.auth.dependencies import get_current_user
@@ -10,13 +10,16 @@ from app.images.schemas import (
     ImageResponse,
     ImageListResponse,
     SaveAnnotationsRequest,
+    UpdateImageRequest,
 )
 from app.images.service import (
     create_upload_urls,
     get_images_by_inspection,
     get_image_by_id,
     save_annotations,
+    update_image_metadata,
     build_annotated_zip,
+    delete_image,
 )
 
 router = APIRouter(tags=["images"])
@@ -46,13 +49,17 @@ def request_upload_urls(
 )
 def list_images(
     inspection_id: str,
+    include_urls: bool = Query(
+        True,
+        description="Include presigned S3 URLs (set to false for metadata-only for better performance)"
+    ),
     user: dict = Depends(get_current_user),
 ):
     inspection = get_inspection_by_id(inspection_id, user["email"])
     if inspection is None:
         raise_not_found("Inspection")
 
-    images = get_images_by_inspection(inspection_id)
+    images = get_images_by_inspection(inspection_id, include_urls=include_urls)
     return ImageListResponse(images=images, total=len(images))
 
 
@@ -80,6 +87,20 @@ def update_annotations(
     return updated
 
 
+@router.patch("/api/images/{image_id}", response_model=ImageResponse)
+def update_image(
+    image_id: str,
+    request: UpdateImageRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Update image metadata (e.g., asset_type for this specific image)."""
+    updates = request.model_dump(exclude_unset=True)
+    updated = update_image_metadata(image_id, updates)
+    if updated is None:
+        raise_not_found("Image")
+    return updated
+
+
 @router.get("/api/inspections/{inspection_id}/download-annotated")
 def download_annotated_images(
     inspection_id: str,
@@ -98,3 +119,20 @@ def download_annotated_images(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.delete("/api/images/{image_id}")
+def delete_image_endpoint(
+    image_id: str,
+    delete_s3_files: bool = Query(
+        False,
+        description="If true, permanently delete S3 files (cannot be undone)"
+    ),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Soft delete an image and optionally delete S3 files.
+    Use with caution - S3 deletion cannot be undone!
+    """
+    result = delete_image(image_id, delete_s3_files)
+    return result

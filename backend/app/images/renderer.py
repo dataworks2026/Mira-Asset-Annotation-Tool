@@ -54,7 +54,11 @@ def _build_label(annotation: dict) -> str:
 
     component = annotation.get("component")
     if component:
-        parts.append(component)
+        # Support both legacy string and new list format
+        if isinstance(component, list):
+            parts.append(", ".join(component))
+        else:
+            parts.append(component)
 
     return " | ".join(parts) if parts else ""
 
