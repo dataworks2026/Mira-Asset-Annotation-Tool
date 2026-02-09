@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import {
   Inspection,
   CreateInspectionPayload,
+  UpdateInspectionPayload,
   InspectionListResponse,
 } from "@/types/inspection";
 
@@ -44,9 +45,24 @@ export function useInspections() {
     []
   );
 
+  const updateInspection = useCallback(
+    async (id: string, payload: UpdateInspectionPayload): Promise<Inspection> => {
+      return api.put<Inspection>(`/api/inspections/${id}`, payload);
+    },
+    []
+  );
+
   const completeInspection = useCallback(
     async (id: string): Promise<Inspection> => {
       return api.post<Inspection>(`/api/inspections/${id}/complete`);
+    },
+    []
+  );
+
+  const deleteInspection = useCallback(
+    async (id: string, deleteS3Files: boolean = false): Promise<void> => {
+      const query = deleteS3Files ? "?delete_s3_files=true" : "";
+      await api.delete(`/api/inspections/${id}${query}`);
     },
     []
   );
@@ -58,6 +74,8 @@ export function useInspections() {
     fetchInspections,
     createInspection,
     getInspection,
+    updateInspection,
     completeInspection,
+    deleteInspection,
   };
 }
