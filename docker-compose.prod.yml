@@ -32,8 +32,6 @@ services:
       - "8000:8000"
     env_file:
       - ./backend/.env
-    depends_on:
-      - mongodb
     restart: unless-stopped
     networks:
       - app-network
@@ -44,25 +42,6 @@ services:
       retries: 3
       start_period: 60s
 
-  mongodb:
-    image: mongo:7
-    container_name: annotation-mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo-data:/data/db
-    restart: unless-stopped
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 networks:
   app-network:
     driver: bridge
-
-volumes:
-  mongo-data:
