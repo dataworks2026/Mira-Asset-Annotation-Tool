@@ -30,7 +30,12 @@ class S3Service:
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
             region_name=region,
             endpoint_url=f"https://s3.{region}.amazonaws.com",
-            config=Config(signature_version="s3v4"),
+            config=Config(
+                signature_version="s3v4",
+                retries={"max_attempts": 5, "mode": "adaptive"},
+                connect_timeout=10,
+                read_timeout=60,
+            ),
         )
         self.bucket_name = settings.S3_BUCKET_NAME
 
@@ -45,8 +50,9 @@ class S3Service:
             )
 
     def generate_presigned_upload_url(
-        self, key: str, content_type: str, expires_in: int = 3600
+        self, key: str, content_type: str, expires_in: int = 7200
     ) -> str:
+        """Generate presigned upload URL. Default 2 hours for bulk uploads."""
         self._check_available()
         return self.s3_client.generate_presigned_url(
             "put_object",

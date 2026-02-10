@@ -25,7 +25,20 @@ export default function UploadPage() {
     setError("");
     try {
       await uploadImages(inspectionId, files);
-      showToast("success", `${files.length} image${files.length > 1 ? "s" : ""} uploaded`);
+
+      // Check upload results
+      const successful = uploadProgress.filter(p => p.status === "done").length;
+      const failed = uploadProgress.filter(p => p.status === "error").length;
+
+      if (failed === 0) {
+        showToast("success", `${successful} image${successful > 1 ? "s" : ""} uploaded successfully`);
+      } else if (successful === 0) {
+        showToast("error", `All ${failed} upload${failed > 1 ? "s" : ""} failed`);
+        setError(`All uploads failed. Check your internet connection and try again.`);
+      } else {
+        showToast("warning", `${successful} uploaded, ${failed} failed`);
+        setError(`${failed} file${failed > 1 ? "s" : ""} failed to upload. You can retry them.`);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Upload failed";
       setError(msg);

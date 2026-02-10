@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB per file
 
 
 def _sanitize_folder_name(name: str) -> str:
@@ -42,7 +43,15 @@ def create_upload_urls(
 
     results = []
     for f in files:
+        # Validate content type
         if f["content_type"] not in ALLOWED_CONTENT_TYPES:
+            logger.warning(f"Skipping file {f['filename']} - invalid content type: {f['content_type']}")
+            continue
+
+        # Validate file size
+        file_size = f.get("file_size", 0)
+        if file_size > MAX_FILE_SIZE:
+            logger.warning(f"Skipping file {f['filename']} - exceeds {MAX_FILE_SIZE/1024/1024}MB limit")
             continue
 
         image_id = str(uuid.uuid4())

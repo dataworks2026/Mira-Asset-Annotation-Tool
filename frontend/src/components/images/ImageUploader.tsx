@@ -175,9 +175,16 @@ export function ImageUploader({
         <div className="space-y-3">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-gray-700">Uploading files...</p>
+              <p className="text-sm font-medium text-gray-700">
+                {uploading ? "Uploading files..." : "Upload complete"}
+              </p>
               <p className="text-xs text-gray-500">
                 {progress.filter(p => p.status === "done").length} / {progress.length} complete
+                {progress.filter(p => p.status === "error").length > 0 && (
+                  <span className="ml-2 text-red-600">
+                    ({progress.filter(p => p.status === "error").length} failed)
+                  </span>
+                )}
               </p>
             </div>
             {/* Overall progress bar */}

@@ -48,6 +48,7 @@ export function useImages() {
         const fileInfos = files.map((f) => ({
           filename: f.name,
           content_type: f.type || "image/jpeg",
+          file_size: f.size,
         }));
 
         const urlResponse = await api.post<UploadUrlResponse>(
@@ -55,69 +56,85 @@ export function useImages() {
           { files: fileInfos }
         );
 
-        // Upload with parallel execution and concurrency control
-        const MAX_RETRIES = 3;
-        const CONCURRENCY = 5; // Upload 5 files at a time for optimal performance
+        // Enhanced upload configuration
+        const MAX_RETRIES = 5;
+        const CONCURRENCY = 3; // Reduced for stability
+        const UPLOAD_TIMEOUT = 120000; // 2 minutes per file
 
-        // Function to upload a single file with retry logic
-        const uploadFile = async (index: number) => {
+        // Upload single file with timeout and retry
+        const uploadFile = async (index: number): Promise<void> => {
           const urlInfo = urlResponse.upload_urls[index];
+          const file = files[index];
+
           progress[index].status = "uploading";
           setUploadProgress([...progress]);
 
           for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try {
+              // Create abort controller for timeout
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT);
+
               const resp = await fetch(urlInfo.upload_url, {
                 method: "PUT",
-                body: files[index],
-                headers: { "Content-Type": files[index].type || "image/jpeg" },
+                body: file,
+                headers: {
+                  "Content-Type": file.type || "image/jpeg",
+                },
+                signal: controller.signal,
               });
 
+              clearTimeout(timeoutId);
+
               if (!resp.ok) {
-                throw new Error(`Upload failed: ${resp.status}`);
+                throw new Error(`Upload failed: ${resp.status} ${resp.statusText}`);
               }
 
               progress[index].status = "done";
               setUploadProgress([...progress]);
               return;
             } catch (err) {
+              const isTimeout = err instanceof Error && err.name === "AbortError";
+              const errorMsg = isTimeout
+                ? "Upload timeout - file too large or slow connection"
+                : err instanceof Error ? err.message : "Upload failed";
+
               if (attempt < MAX_RETRIES - 1) {
-                // Exponential backoff: 1s, 2s, 4s
-                await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+                // Exponential backoff: 2s, 4s, 8s, 16s
+                const delay = 2000 * Math.pow(2, attempt);
+                console.log(`Retry ${attempt + 1}/${MAX_RETRIES} for ${file.name} after ${delay}ms`);
+                await new Promise((r) => setTimeout(r, delay));
               } else {
                 progress[index].status = "error";
-                progress[index].error =
-                  err instanceof Error ? err.message : "Upload failed";
+                progress[index].error = errorMsg;
                 setUploadProgress([...progress]);
+                console.error(`Failed to upload ${file.name}:`, errorMsg);
               }
             }
           }
         };
 
-        // Process uploads with concurrency limit using a queue
+        // Process with concurrency control
         const processQueue = async () => {
-          const activeUploads: Promise<void>[] = [];
+          const executing: Promise<void>[] = [];
 
           for (let i = 0; i < urlResponse.upload_urls.length; i++) {
-            // Start upload
-            const uploadPromise = uploadFile(i);
-            activeUploads.push(uploadPromise);
+            const uploadPromise = uploadFile(i).then(() => {
+              // Remove from executing when done
+              const idx = executing.indexOf(uploadPromise);
+              if (idx > -1) executing.splice(idx, 1);
+            });
 
-            // If we've reached concurrency limit, wait for one to finish
-            if (activeUploads.length >= CONCURRENCY) {
-              await Promise.race(activeUploads);
-              // Remove finished uploads
-              const stillActive = activeUploads.filter(async (p) => {
-                const settled = await Promise.race([p, Promise.resolve(false)]);
-                return settled === false;
-              });
-              activeUploads.length = 0;
-              activeUploads.push(...stillActive);
+            executing.push(uploadPromise);
+
+            // Wait if concurrency limit reached
+            if (executing.length >= CONCURRENCY) {
+              await Promise.race(executing);
             }
           }
 
-          // Wait for all remaining uploads to complete
-          await Promise.allSettled(activeUploads);
+          // Wait for remaining uploads
+          await Promise.allSettled(executing);
         };
 
         await processQueue();
