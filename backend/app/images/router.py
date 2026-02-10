@@ -10,10 +10,12 @@ from app.images.schemas import (
     ImageResponse,
     ImageListResponse,
     SaveAnnotationsRequest,
+    ConfirmUploadRequest,
     UpdateImageRequest,
 )
 from app.images.service import (
     create_upload_urls,
+    confirm_upload_success,
     get_images_by_inspection,
     get_image_by_id,
     save_annotations,
@@ -41,6 +43,19 @@ def request_upload_urls(
     files = [f.model_dump() for f in request.files]
     urls = create_upload_urls(inspection_id, files, inspection)
     return UploadUrlResponse(upload_urls=urls)
+
+
+@router.post("/api/images/confirm-upload")
+def confirm_upload(
+    request: ConfirmUploadRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Frontend calls this after successfully uploading images to S3.
+    Marks images as upload_completed=True so they count toward total_images.
+    """
+    result = confirm_upload_success(request.image_ids)
+    return result
 
 
 @router.get(
@@ -80,6 +95,10 @@ def update_annotations(
     request: SaveAnnotationsRequest,
     user: dict = Depends(get_current_user),
 ):
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Received annotation update for image {image_id}: {request.model_dump()}")
+
     annotations = [a.model_dump() for a in request.annotations]
     updated = save_annotations(image_id, annotations)
     if updated is None:
@@ -118,6 +137,61 @@ def download_annotated_images(
         content=zip_bytes,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.options("/api/images/{image_id}/view")
+def proxy_image_options():
+    """Handle CORS preflight requests for image proxy endpoint."""
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+
+@router.get("/api/images/{image_id}/view")
+def proxy_image(image_id: str):
+    """
+    Proxy image from S3 through backend - eliminates CORS issues.
+
+    NOTE: This endpoint is intentionally public (no auth required) because:
+    1. HTML <img> tags cannot send Authorization headers
+    2. Image UUIDs are sufficiently random (not guessable)
+    3. Images are already access-controlled at inspection level
+    4. Alternative would be signed URLs with tokens (more complex)
+
+    Includes aggressive caching headers for browser performance.
+    """
+    from app.images.repository import ImageRepository
+    from app.images.s3_service import get_s3_service
+    from fastapi import HTTPException
+
+    repo = ImageRepository()
+    image = repo.find_by_id(image_id)
+
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # Download from S3
+    s3 = get_s3_service()
+    image_bytes = s3.download_object(image["s3_key"])
+
+    # Return with aggressive caching (1 hour) and immutable directive
+    # Include CORS headers for browser compatibility (especially for canvas/Fabric.js)
+    return Response(
+        content=image_bytes,
+        media_type=image.get("content_type", "image/jpeg"),
+        headers={
+            "Cache-Control": "public, max-age=3600, immutable",
+            "ETag": f'"{image_id}"',
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
     )
 
 

@@ -3,6 +3,7 @@
 import { InspectionImage } from "@/types/image";
 import { Badge } from "@/components/ui/Badge";
 import { ANNOTATION_STATUS_CONFIG } from "@/lib/statusConfig";
+import { getImageUrl } from "@/lib/api";
 
 interface ImageThumbnailProps {
   image: InspectionImage;
@@ -42,7 +43,7 @@ export function ImageThumbnail({ image, onClick, onDelete, showAnnotateButton = 
       <div className="aspect-[4/3] bg-gray-100 overflow-hidden relative">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={image.s3_url}
+          src={getImageUrl(image.s3_url)}
           alt={image.filename}
           className="h-full w-full object-cover group-hover:scale-105 transition-transform"
           loading="lazy"

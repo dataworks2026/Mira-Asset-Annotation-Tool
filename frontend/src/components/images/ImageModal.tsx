@@ -5,7 +5,7 @@ import { InspectionImage } from "@/types/image";
 import { Badge } from "@/components/ui/Badge";
 import { ANNOTATION_STATUS_CONFIG } from "@/lib/statusConfig";
 import { ELEVATION_ZONES, SIDE_FACE_OPTIONS } from "@/lib/referenceData";
-import { api } from "@/lib/api";
+import { api, getImageUrl } from "@/lib/api";
 import { showToast } from "@/components/ui/Toast";
 
 interface ImageModalProps {
@@ -128,7 +128,7 @@ export function ImageModal({
           <div className="flex-1 overflow-auto p-2 flex items-center justify-center bg-gray-50 min-h-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={image.s3_url}
+              src={getImageUrl(image.s3_url)}
               alt={image.filename}
               className="max-h-[75vh] max-w-full object-contain"
             />

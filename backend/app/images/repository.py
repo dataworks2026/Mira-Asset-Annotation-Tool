@@ -54,8 +54,13 @@ class ImageRepository:
         )
 
     def count_by_inspection(self, inspection_id: str) -> int:
+        """Count only successfully uploaded images (where upload_completed is True)."""
         return self._collection.count_documents(
-            {"inspection_id": inspection_id, "deleted_at": None}
+            {
+                "inspection_id": inspection_id,
+                "deleted_at": None,
+                "upload_completed": True,  # Only count completed uploads
+            }
         )
 
     def soft_delete_by_inspection(self, inspection_id: str) -> int:

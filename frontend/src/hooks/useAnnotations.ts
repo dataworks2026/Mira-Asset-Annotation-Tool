@@ -59,9 +59,19 @@ export function useAnnotations() {
 
           // Skip unchanged
           if (JSON.stringify(current) !== JSON.stringify(saved)) {
+            // Clean annotations: remove empty arrays for optional fields
+            const cleanedAnnotations = current.map(annot => {
+              const cleaned = { ...annot };
+              // If structural_segments is empty array, set to undefined
+              if (cleaned.structural_segments && cleaned.structural_segments.length === 0) {
+                cleaned.structural_segments = undefined;
+              }
+              return cleaned;
+            });
+
             await api.put<InspectionImage>(
               `/api/images/${imageId}/annotations`,
-              { annotations: current }
+              { annotations: cleanedAnnotations }
             );
           }
         }

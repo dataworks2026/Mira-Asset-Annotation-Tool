@@ -67,10 +67,20 @@ class S3Service:
     def generate_presigned_download_url(
         self, key: str, expires_in: int = 3600
     ) -> str:
+        """
+        Generate presigned download URL with smart cache-control headers.
+        - Caches for 1 hour for performance
+        - Forces revalidation after expiry to prevent stale CORS errors
+        - Browser can use cached version within the hour
+        """
         self._check_available()
         return self.s3_client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": self.bucket_name, "Key": key},
+            Params={
+                "Bucket": self.bucket_name,
+                "Key": key,
+                "ResponseCacheControl": "public, max-age=3600, must-revalidate",
+            },
             ExpiresIn=expires_in,
         )
 

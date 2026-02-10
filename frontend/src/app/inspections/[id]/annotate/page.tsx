@@ -21,7 +21,7 @@ import { Inspection } from "@/types/inspection";
 import { ErrorAlert } from "@/components/ui/ErrorAlert";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { showToast } from "@/components/ui/Toast";
-import { api } from "@/lib/api";
+import { api, getImageUrl } from "@/lib/api";
 import {
   getAssetTypesForCategory,
   IndustryCategory,
@@ -352,6 +352,26 @@ export default function AnnotatePage() {
 
   const handleSave = useCallback(async () => {
     setSaveError("");
+
+    // Validate: Asset type is required for images with annotations
+    const imagesWithAnnotations = Object.entries(localAnnotations).filter(
+      ([_, annotations]) => annotations.length > 0
+    );
+
+    // Check all images with annotations for missing asset type
+    for (const [imageId] of imagesWithAnnotations) {
+      // Check local state first (most up-to-date), then image data
+      const assetType = localAssetTypes[imageId] || images.find(img => img.image_id === imageId)?.asset_type;
+
+      if (!assetType || assetType.trim() === "") {
+        const imageName = images.find(img => img.image_id === imageId)?.filename || "this image";
+        const msg = `Please select an Asset Type for ${imageName} before saving annotations.`;
+        setSaveError(msg);
+        showToast("error", msg);
+        return; // Stop here - don't save
+      }
+    }
+
     try {
       await saveAllDirty(localAnnotations);
       showToast("success", "Annotations saved");
@@ -360,7 +380,7 @@ export default function AnnotatePage() {
       setSaveError(msg);
       showToast("error", msg);
     }
-  }, [localAnnotations, saveAllDirty]);
+  }, [localAnnotations, localAssetTypes, images, saveAllDirty]);
 
   // Keyboard shortcuts handler
   useEffect(() => {
@@ -532,7 +552,7 @@ export default function AnnotatePage() {
               {currentImage && (
                 <AnnotationCanvas
                   ref={canvasRef}
-                  imageUrl={currentImage.s3_url}
+                  imageUrl={getImageUrl(currentImage.s3_url)}
                   annotations={currentAnnotations}
                   activeTool={isReadOnly ? "select" : activeTool}
                   onAnnotationsChange={handleAnnotationsChange}
@@ -546,15 +566,20 @@ export default function AnnotatePage() {
           <div className="w-72 flex-shrink-0 overflow-y-auto border-l border-gray-200 bg-white p-3 space-y-4">
             {/* Image Asset Type Selector */}
             <div>
-              <h3 className="text-xs font-semibold uppercase text-gray-500 mb-2">
+              <h3 className="text-xs font-semibold uppercase text-gray-500 mb-2 flex items-center gap-1">
                 Image Asset Type
+                <span className="text-red-500">*</span>
               </h3>
               <select
                 value={currentAssetType || ""}
                 onChange={(e) => handleAssetTypeChange(e.target.value)}
                 disabled={isReadOnly}
                 aria-label="Image Asset Type"
-                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                className={`w-full rounded-md border px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 ${
+                  !currentAssetType && currentAnnotations.length > 0
+                    ? "border-red-300 bg-red-50"
+                    : "border-gray-300"
+                }`}
               >
                 <option value="">-- Select Asset Type --</option>
                 {availableAssetTypes.map((at) => (
@@ -563,15 +588,25 @@ export default function AnnotatePage() {
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-gray-400">
-                Set the asset type for this specific image
-              </p>
+              {!currentAssetType && currentAnnotations.length > 0 ? (
+                <p className="mt-1 text-xs text-red-600 flex items-start gap-1">
+                  <svg className="h-3 w-3 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  Required: Select asset type before saving annotations
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-gray-400">
+                  Set the asset type for this specific image
+                </p>
+              )}
             </div>
 
             {/* Spatial Awareness Fields */}
             <div className="rounded-lg border border-blue-100 bg-blue-50/30 p-3 space-y-2.5">
-              <h3 className="text-xs font-semibold uppercase text-blue-700 mb-2">
-                Location Context
+              <h3 className="text-xs font-semibold uppercase text-blue-700 mb-2 flex items-center justify-between">
+                <span>Location Context</span>
+                <span className="text-xs font-normal text-gray-500 normal-case">(Optional)</span>
               </h3>
 
               {/* Segment */}
