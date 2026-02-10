@@ -283,6 +283,7 @@ def _build_annotations_json(image_docs: list[dict], inspection_id: str) -> str:
             "segment": doc.get("segment"),
             "elevation": doc.get("elevation"),
             "side_face": doc.get("side_face"),
+            "structural_segments": doc.get("structural_segments", []),
             "annotation_status": doc.get("annotation_status"),
             "num_annotations": doc.get("num_annotations", len(annotations_out)),
             "annotations": annotations_out,
