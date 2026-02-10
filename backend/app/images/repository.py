@@ -54,12 +54,15 @@ class ImageRepository:
         )
 
     def count_by_inspection(self, inspection_id: str) -> int:
-        """Count only successfully uploaded images (where upload_completed is True)."""
+        """Count successfully uploaded images. For backwards compatibility, also count images without upload_completed field (legacy)."""
         return self._collection.count_documents(
             {
                 "inspection_id": inspection_id,
                 "deleted_at": None,
-                "upload_completed": True,  # Only count completed uploads
+                "$or": [
+                    {"upload_completed": True},  # New images
+                    {"upload_completed": {"$exists": False}}  # Legacy images (backwards compatibility)
+                ]
             }
         )
 
