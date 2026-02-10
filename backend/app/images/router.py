@@ -164,11 +164,15 @@ def proxy_image(image_id: str):
     3. Images are already access-controlled at inspection level
     4. Alternative would be signed URLs with tokens (more complex)
 
-    Includes aggressive caching headers for browser performance.
+    Streams image from S3 to avoid memory issues and timeouts.
     """
+    import logging
     from app.images.repository import ImageRepository
     from app.images.s3_service import get_s3_service
     from fastapi import HTTPException
+    from fastapi.responses import StreamingResponse
+
+    logger = logging.getLogger(__name__)
 
     repo = ImageRepository()
     image = repo.find_by_id(image_id)
@@ -176,23 +180,41 @@ def proxy_image(image_id: str):
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    # Download from S3
-    s3 = get_s3_service()
-    image_bytes = s3.download_object(image["s3_key"])
+    # Get S3 streaming response
+    s3_service = get_s3_service()
+    try:
+        s3_service._check_available()
 
-    # Return with aggressive caching (1 hour) and immutable directive
-    # Include CORS headers for browser compatibility (especially for canvas/Fabric.js)
-    return Response(
-        content=image_bytes,
-        media_type=image.get("content_type", "image/jpeg"),
-        headers={
-            "Cache-Control": "public, max-age=3600, immutable",
-            "ETag": f'"{image_id}"',
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        }
-    )
+        if not s3_service.s3_client:
+            raise HTTPException(status_code=503, detail="S3 service unavailable")
+
+        response = s3_service.s3_client.get_object(Bucket=s3_service.bucket_name, Key=image["s3_key"])
+
+        # Stream the body
+        def iterfile():
+            try:
+                for chunk in response['Body'].iter_chunks(chunk_size=8192):
+                    yield chunk
+            finally:
+                response['Body'].close()
+
+        # Return streaming response with caching headers
+        return StreamingResponse(
+            iterfile(),
+            media_type=image.get("content_type", "image/jpeg"),
+            headers={
+                "Cache-Control": "public, max-age=3600, immutable",
+                "ETag": f'"{image_id}"',
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error streaming image {image_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load image")
 
 
 @router.delete("/api/images/{image_id}")
