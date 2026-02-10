@@ -248,12 +248,14 @@ def _build_annotations_json(image_docs: list[dict], inspection_id: str) -> str:
         for ann in doc.get("annotations", []):
             damage_code = ann.get("damage_type")
             severity = ann.get("severity")
-            components = ann.get("component")
-            # Normalize component to list for backwards compat
-            if isinstance(components, str):
-                components = [components] if components else []
-            elif not components:
-                components = []
+
+            # Use new structural_segments field, fallback to old component field for backwards compat
+            structural_segments = ann.get("structural_segments") or ann.get("component")
+            # Normalize to list for backwards compat
+            if isinstance(structural_segments, str):
+                structural_segments = [structural_segments] if structural_segments else []
+            elif not structural_segments:
+                structural_segments = []
 
             annotations_out.append({
                 "annotation_id": ann.get("annotation_id"),
@@ -267,8 +269,8 @@ def _build_annotations_json(image_docs: list[dict], inspection_id: str) -> str:
                     "level": severity,
                     "label": SEVERITY_LABELS.get(severity, "") if severity else "",
                 } if severity else None,
-                "components": [
-                    {"code": c} for c in components
+                "structural_segments": [
+                    {"code": c} for c in structural_segments
                 ],
                 "notes": ann.get("notes"),
                 # Spatial Awareness - defect tracking
