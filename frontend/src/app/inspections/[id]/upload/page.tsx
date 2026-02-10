@@ -36,7 +36,7 @@ export default function UploadPage() {
         showToast("error", `All ${failed} upload${failed > 1 ? "s" : ""} failed`);
         setError(`All uploads failed. Check your internet connection and try again.`);
       } else {
-        showToast("warning", `${successful} uploaded, ${failed} failed`);
+        showToast("info", `${successful} uploaded, ${failed} failed`);
         setError(`${failed} file${failed > 1 ? "s" : ""} failed to upload. You can retry them.`);
       }
     } catch (err) {
