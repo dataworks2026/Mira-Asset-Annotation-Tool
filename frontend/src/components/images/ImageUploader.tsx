@@ -4,7 +4,7 @@ import { useState, useRef, DragEvent } from "react";
 import { UploadProgress } from "@/hooks/useImages";
 
 const MAX_FILES = 100;
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB per file
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB per file
 
 interface ImageUploaderProps {
   onUpload: (files: File[]) => Promise<void>;
@@ -20,6 +20,7 @@ export function ImageUploader({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
+  const [lastUploadedFiles, setLastUploadedFiles] = useState<File[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handleFiles(fileList: FileList | null) {
@@ -33,7 +34,7 @@ export function ImageUploader({
     // Validate file sizes
     const oversizedFiles = files.filter(f => f.size > MAX_FILE_SIZE);
     if (oversizedFiles.length > 0) {
-      setError(`${oversizedFiles.length} file(s) exceed 50MB limit and were skipped`);
+      setError(`${oversizedFiles.length} file(s) exceed 100MB limit and were skipped`);
     }
 
     const validFiles = files.filter(f => f.size <= MAX_FILE_SIZE);
@@ -60,11 +61,31 @@ export function ImageUploader({
 
   async function handleUpload() {
     if (selectedFiles.length === 0) return;
+    setLastUploadedFiles(selectedFiles);
     await onUpload(selectedFiles);
     setSelectedFiles([]);
   }
 
-  const showProgress = progress.length > 0 && uploading;
+  async function handleRetryFailed() {
+    // Get failed file indices from progress
+    const failedIndices = progress
+      .map((p, idx) => (p.status === "error" ? idx : -1))
+      .filter((idx) => idx !== -1);
+
+    // Get corresponding files from last upload
+    const failedFiles = failedIndices
+      .map((idx) => lastUploadedFiles[idx])
+      .filter(Boolean);
+
+    if (failedFiles.length === 0) return;
+
+    setSelectedFiles([]);
+    setLastUploadedFiles(failedFiles);
+    await onUpload(failedFiles);
+  }
+
+  const showProgress = progress.length > 0;
+  const hasFailedUploads = progress.some(p => p.status === "error") && !uploading;
   const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
   const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(1);
 
@@ -110,7 +131,7 @@ export function ImageUploader({
           Drag & drop images here, or click to browse
         </p>
         <p className="mt-1 text-xs text-gray-400">
-          JPEG and PNG only • Up to {MAX_FILES} files • Max 50MB per file
+          JPEG and PNG only • Up to {MAX_FILES} files • Max 100MB per file
         </p>
       </div>
 
@@ -248,6 +269,17 @@ export function ImageUploader({
               </div>
             ))}
           </div>
+
+          {/* Retry failed uploads button */}
+          {hasFailedUploads && (
+            <button
+              type="button"
+              onClick={handleRetryFailed}
+              className="w-full rounded-md bg-orange-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-orange-700"
+            >
+              Retry {progress.filter(p => p.status === "error").length} Failed Upload{progress.filter(p => p.status === "error").length !== 1 && "s"}
+            </button>
+          )}
         </div>
       )}
     </div>

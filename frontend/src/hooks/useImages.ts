@@ -57,9 +57,9 @@ export function useImages() {
         );
 
         // Enhanced upload configuration
-        const MAX_RETRIES = 5;
-        const CONCURRENCY = 3; // Reduced for stability
-        const UPLOAD_TIMEOUT = 120000; // 2 minutes per file
+        const MAX_RETRIES = 7; // Increased retries
+        const CONCURRENCY = 4; // Balanced concurrency
+        const UPLOAD_TIMEOUT = 180000; // 3 minutes per file
 
         // Upload single file with timeout and retry
         const uploadFile = async (index: number): Promise<void> => {
@@ -100,8 +100,8 @@ export function useImages() {
                 : err instanceof Error ? err.message : "Upload failed";
 
               if (attempt < MAX_RETRIES - 1) {
-                // Exponential backoff: 2s, 4s, 8s, 16s
-                const delay = 2000 * Math.pow(2, attempt);
+                // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s
+                const delay = 1000 * Math.pow(2, attempt);
                 console.log(`Retry ${attempt + 1}/${MAX_RETRIES} for ${file.name} after ${delay}ms`);
                 await new Promise((r) => setTimeout(r, delay));
               } else {

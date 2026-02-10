@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB per file
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB per file
 
 
 def _sanitize_folder_name(name: str) -> str:

@@ -80,21 +80,32 @@ Enhanced the bulk image upload system to improve reliability, reduce failures, a
 ### Configuration Constants
 ```typescript
 // Frontend (useImages.ts)
-MAX_RETRIES = 5
-CONCURRENCY = 3
-UPLOAD_TIMEOUT = 120000  // 2 minutes
+MAX_RETRIES = 7  // Increased from 5
+CONCURRENCY = 4  // Increased from 3
+UPLOAD_TIMEOUT = 180000  // 3 minutes (increased from 2)
 
 // Frontend (ImageUploader.tsx)
 MAX_FILES = 100
-MAX_FILE_SIZE = 50 * 1024 * 1024  // 50MB
+MAX_FILE_SIZE = 100 * 1024 * 1024  // 100MB (increased from 50MB)
 
 // Backend (service.py)
-MAX_FILE_SIZE = 50 * 1024 * 1024  // 50MB
+MAX_FILE_SIZE = 100 * 1024 * 1024  // 100MB (increased from 50MB)
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 
 // Backend (s3_service.py)
 PRESIGNED_URL_EXPIRATION = 7200  // 2 hours
 ```
+
+### Latest Updates (Addressing 7% Failure Rate)
+
+**After observing 7/100 failures in production, made these adjustments:**
+
+1. **Increased Retries**: 5 → 7 attempts per file
+2. **Increased Timeout**: 2 minutes → 3 minutes per file
+3. **Increased Concurrency**: 3 → 4 concurrent uploads
+4. **Doubled File Size Limit**: 50MB → 100MB per file
+5. **Added Retry Failed Button**: Users can retry only failed uploads
+6. **Faster Initial Retry**: Backoff starts at 1s instead of 2s (1s, 2s, 4s, 8s, 16s, 32s)
 
 ## Testing Recommendations
 
