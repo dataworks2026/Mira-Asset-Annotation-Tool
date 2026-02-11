@@ -103,6 +103,7 @@ const AnnotationCanvasInner = forwardRef<
   const isDrawingRef = useRef(false);
   const drawStartRef = useRef<{ x: number; y: number } | null>(null);
   const activeShapeRef = useRef<FabricObject | null>(null);
+  const copiedAnnotationRef = useRef<AnnotationRect | null>(null);
   const imageScaleRef = useRef<{ scaleX: number; scaleY: number; offsetX: number; offsetY: number }>({
     scaleX: 1,
     scaleY: 1,
@@ -140,6 +141,10 @@ const AnnotationCanvasInner = forwardRef<
   // Sync shapes to canvas
   const syncShapesToCanvas = useCallback(
     (canvas: Canvas, annots: AnnotationRect[]) => {
+      // Preserve the currently active object's annotation ID
+      const activeObject = canvas.getActiveObject();
+      const activeAnnotationId = activeObject ? (activeObject as AnnotatedFabricObject).annotationId : null;
+
       // Remove existing shapes and labels
       const objects = canvas.getObjects().filter(
         (obj) => obj.type === "rect" || obj.type === "ellipse" || (obj as AnnotatedFabricObject).isLabel
@@ -147,6 +152,7 @@ const AnnotationCanvasInner = forwardRef<
       objects.forEach((obj) => canvas.remove(obj));
 
       // Add annotation shapes and labels
+      let objectToReselect: FabricObject | null = null;
       annots.forEach((annot) => {
         const canvasBbox = imageToCanvas(annot.bbox);
         const shapeType = annot.shape_type || "rect";
@@ -177,6 +183,11 @@ const AnnotationCanvasInner = forwardRef<
 
         (shape as AnnotatedFabricObject).annotationId = annot.annotation_id;
         canvas.add(shape);
+
+        // If this was the previously selected annotation, remember it for reselection
+        if (activeAnnotationId && annot.annotation_id === activeAnnotationId) {
+          objectToReselect = shape;
+        }
 
         // Add label text above the shape
         const labelText = buildLabel(annot);
@@ -209,6 +220,11 @@ const AnnotationCanvasInner = forwardRef<
           canvas.add(label);
         }
       });
+
+      // Reselect the previously selected annotation if it still exists
+      if (objectToReselect && !readOnly) {
+        canvas.setActiveObject(objectToReselect);
+      }
 
       canvas.renderAll();
     },
@@ -526,6 +542,68 @@ const AnnotationCanvasInner = forwardRef<
     },
     getAnnotations: () => annotationsRef.current,
   }));
+
+  // Copy-Paste functionality with Ctrl+C / Ctrl+V
+  useEffect(() => {
+    if (readOnly) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      // Check if Ctrl/Cmd is pressed
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+      // Copy: Ctrl+C or Cmd+C
+      if (isCtrlOrCmd && e.key === 'c') {
+        const activeObject = canvas.getActiveObject();
+        if (!activeObject) return;
+
+        const annotationId = (activeObject as AnnotatedFabricObject).annotationId;
+        if (!annotationId) return;
+
+        // Find and copy the annotation data
+        const annotation = annotationsRef.current.find(a => a.annotation_id === annotationId);
+        if (annotation) {
+          copiedAnnotationRef.current = annotation;
+          e.preventDefault();
+          console.log('Annotation copied');
+        }
+      }
+
+      // Paste: Ctrl+V or Cmd+V
+      if (isCtrlOrCmd && e.key === 'v') {
+        const copiedAnnotation = copiedAnnotationRef.current;
+        if (!copiedAnnotation) return;
+
+        e.preventDefault();
+
+        // Create a new annotation with offset position
+        const offset = 20; // Offset in pixels
+        const newAnnotation: AnnotationRect = {
+          ...copiedAnnotation,
+          annotation_id: generateId(),
+          bbox: {
+            x: copiedAnnotation.bbox.x + offset,
+            y: copiedAnnotation.bbox.y + offset,
+            width: copiedAnnotation.bbox.width,
+            height: copiedAnnotation.bbox.height,
+          },
+        };
+
+        const updated = [...annotationsRef.current, newAnnotation];
+        annotationsRef.current = updated;
+        onAnnotationsChange(updated);
+        onSelectionChange(newAnnotation.annotation_id);
+        console.log('Annotation pasted');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [readOnly, onAnnotationsChange, onSelectionChange]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full bg-gray-900">
