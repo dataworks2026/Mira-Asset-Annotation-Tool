@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from pymongo.collection import Collection
@@ -5,6 +6,21 @@ from pymongo.collection import Collection
 from app.database import get_collection
 
 _PROJECTION = {"_id": 0}
+
+
+def _extract_number_from_filename(filename: str) -> int:
+    """Extract the first number from a filename for sorting.
+
+    Examples:
+        - "image_001.jpg" -> 1
+        - "photo123.png" -> 123
+        - "DSC_0042.jpg" -> 42
+        - "no_numbers.jpg" -> 999999 (sorts to end)
+    """
+    match = re.search(r'\d+', filename)
+    if match:
+        return int(match.group())
+    return 999999  # Files without numbers sort to the end
 
 
 class ImageRepository:
@@ -18,9 +34,12 @@ class ImageRepository:
         results = []
         for doc in self._collection.find(
             {"inspection_id": inspection_id, "deleted_at": None}, _PROJECTION
-        ).sort("uploaded_at", 1):
+        ):
             self._serialize_dates(doc)
             results.append(doc)
+
+        # Sort by number in filename (ascending)
+        results.sort(key=lambda x: _extract_number_from_filename(x.get("filename", "")))
         return results
 
     def find_by_id(self, image_id: str) -> dict | None:
