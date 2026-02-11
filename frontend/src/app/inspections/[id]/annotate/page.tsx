@@ -74,6 +74,7 @@ export default function AnnotatePage() {
   const [localLatitudes, setLocalLatitudes] = useState<Record<string, number | undefined>>({});
   const [localLongitudes, setLocalLongitudes] = useState<Record<string, number | undefined>>({});
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [isLocationContextExpanded, setIsLocationContextExpanded] = useState(false);
 
   const canvasRef = useRef<AnnotationCanvasRef>(null);
 
@@ -602,127 +603,6 @@ export default function AnnotatePage() {
               )}
             </div>
 
-            {/* Spatial Awareness Fields */}
-            <div className="rounded-lg border border-blue-100 bg-blue-50/30 p-3 space-y-2.5">
-              <h3 className="text-xs font-semibold uppercase text-blue-700 mb-2 flex items-center justify-between">
-                <span>Location Context</span>
-                <span className="text-xs font-normal text-gray-500 normal-case">(Optional)</span>
-              </h3>
-
-              {/* Segment */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Segment/Bay
-                </label>
-                <input
-                  type="text"
-                  value={
-                    currentImage
-                      ? localSegments[currentImage.image_id] || currentImage.segment || ""
-                      : ""
-                  }
-                  onChange={(e) => handleSpatialFieldChange("segment", e.target.value)}
-                  disabled={isReadOnly}
-                  placeholder="e.g., Segment 1, Bay 3"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
-                />
-              </div>
-
-              {/* Elevation */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Elevation
-                </label>
-                <select
-                  value={
-                    currentImage
-                      ? localElevations[currentImage.image_id] || currentImage.elevation || ""
-                      : ""
-                  }
-                  onChange={(e) => handleSpatialFieldChange("elevation", e.target.value)}
-                  disabled={isReadOnly}
-                  aria-label="Elevation Zone"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
-                >
-                  <option value="">-- Select --</option>
-                  {ELEVATION_ZONES.map((zone) => (
-                    <option key={zone.value} value={zone.value}>
-                      {zone.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Side/Face */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Side/Face
-                </label>
-                <select
-                  value={
-                    currentImage
-                      ? localSideFaces[currentImage.image_id] || currentImage.side_face || ""
-                      : ""
-                  }
-                  onChange={(e) => handleSpatialFieldChange("side_face", e.target.value)}
-                  disabled={isReadOnly}
-                  aria-label="Side Face Orientation"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
-                >
-                  <option value="">-- Select --</option>
-                  {SIDE_FACE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* GPS Coordinates */}
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Latitude
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={
-                      currentImage
-                        ? (localLatitudes[currentImage.image_id] ?? currentImage.latitude ?? "")
-                        : ""
-                    }
-                    onChange={(e) => handleGPSFieldChange("latitude", e.target.value)}
-                    disabled={isReadOnly}
-                    placeholder="e.g., 40.7128"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Longitude
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={
-                      currentImage
-                        ? (localLongitudes[currentImage.image_id] ?? currentImage.longitude ?? "")
-                        : ""
-                    }
-                    onChange={(e) => handleGPSFieldChange("longitude", e.target.value)}
-                    disabled={isReadOnly}
-                    placeholder="e.g., -74.0060"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
-                  />
-                </div>
-              </div>
-
-              <p className="text-xs text-gray-500 pt-1">
-                Track defect location across inspections
-              </p>
-            </div>
-
             {/* Annotations List */}
             <div>
               <h3 className="text-xs font-semibold uppercase text-gray-500 mb-2">
@@ -749,6 +629,145 @@ export default function AnnotatePage() {
                 assetType={currentAssetType}
                 industryCategory={industryCategory}
               />
+            </div>
+
+            {/* Location Context - Collapsible */}
+            <div className="rounded-lg border border-blue-100 bg-blue-50/30">
+              <button
+                type="button"
+                onClick={() => setIsLocationContextExpanded(!isLocationContextExpanded)}
+                className="w-full flex items-center justify-between p-3 text-left hover:bg-blue-50/50 transition-colors"
+              >
+                <h3 className="text-xs font-semibold uppercase text-blue-700 flex items-center gap-2">
+                  <span>Location Context</span>
+                  <span className="text-xs font-normal text-gray-500 normal-case">(Optional)</span>
+                </h3>
+                <svg
+                  className={`w-4 h-4 text-blue-700 transition-transform ${isLocationContextExpanded ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {isLocationContextExpanded && (
+                <div className="p-3 pt-0 space-y-2.5">
+                  {/* Segment */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Segment/Bay
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        currentImage
+                          ? localSegments[currentImage.image_id] || currentImage.segment || ""
+                          : ""
+                      }
+                      onChange={(e) => handleSpatialFieldChange("segment", e.target.value)}
+                      disabled={isReadOnly}
+                      placeholder="e.g., Segment 1, Bay 3"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                    />
+                  </div>
+
+                  {/* Elevation */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Elevation
+                    </label>
+                    <select
+                      value={
+                        currentImage
+                          ? localElevations[currentImage.image_id] || currentImage.elevation || ""
+                          : ""
+                      }
+                      onChange={(e) => handleSpatialFieldChange("elevation", e.target.value)}
+                      disabled={isReadOnly}
+                      aria-label="Elevation Zone"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                    >
+                      <option value="">-- Select --</option>
+                      {ELEVATION_ZONES.map((zone) => (
+                        <option key={zone.value} value={zone.value}>
+                          {zone.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Side/Face */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Side/Face
+                    </label>
+                    <select
+                      value={
+                        currentImage
+                          ? localSideFaces[currentImage.image_id] || currentImage.side_face || ""
+                          : ""
+                      }
+                      onChange={(e) => handleSpatialFieldChange("side_face", e.target.value)}
+                      disabled={isReadOnly}
+                      aria-label="Side Face Orientation"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                    >
+                      <option value="">-- Select --</option>
+                      {SIDE_FACE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* GPS Coordinates */}
+                  <div className="grid grid-cols-2 gap-2 pt-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Latitude
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={
+                          currentImage
+                            ? (localLatitudes[currentImage.image_id] ?? currentImage.latitude ?? "")
+                            : ""
+                        }
+                        onChange={(e) => handleGPSFieldChange("latitude", e.target.value)}
+                        disabled={isReadOnly}
+                        placeholder="e.g., 40.7128"
+                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Longitude
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={
+                          currentImage
+                            ? (localLongitudes[currentImage.image_id] ?? currentImage.longitude ?? "")
+                            : ""
+                        }
+                        onChange={(e) => handleGPSFieldChange("longitude", e.target.value)}
+                        disabled={isReadOnly}
+                        placeholder="e.g., -74.0060"
+                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-gray-500 pt-1">
+                    Track defect location across inspections
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
