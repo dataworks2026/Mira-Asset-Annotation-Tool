@@ -8,19 +8,30 @@ from app.database import get_collection
 _PROJECTION = {"_id": 0}
 
 
-def _extract_number_from_filename(filename: str) -> int:
-    """Extract the first number from a filename for sorting.
+def _extract_sort_key(filename: str) -> tuple[str, int]:
+    """Extract sort key from filename for alphabetic + numeric sorting.
+
+    Returns tuple of (alphabetic_prefix, numeric_value)
+    - Alphabetic prefix: all non-digit characters before first number
+    - Numeric value: first number found in filename
 
     Examples:
-        - "image_001.jpg" -> 1
-        - "photo123.png" -> 123
-        - "DSC_0042.jpg" -> 42
-        - "no_numbers.jpg" -> 999999 (sorts to end)
+        - "GI_SL1.JPG" -> ("GI_SL", 1)
+        - "Yankee Pier-04.jpg" -> ("Yankee Pier-", 4)
+        - "photo123.png" -> ("photo", 123)
+        - "no_numbers.jpg" -> ("no_numbers.jpg", 999999)
     """
+    # Find first number in filename
     match = re.search(r'\d+', filename)
+
     if match:
-        return int(match.group())
-    return 999999  # Files without numbers sort to the end
+        # Extract prefix (everything before the first number)
+        prefix = filename[:match.start()]
+        number = int(match.group())
+        return (prefix, number)
+
+    # No number found - use entire filename as prefix, sort to end
+    return (filename, 999999)
 
 
 class ImageRepository:
@@ -38,8 +49,8 @@ class ImageRepository:
             self._serialize_dates(doc)
             results.append(doc)
 
-        # Sort by number in filename (ascending)
-        results.sort(key=lambda x: _extract_number_from_filename(x.get("filename", "")))
+        # Sort by alphabetic prefix, then by number (ascending)
+        results.sort(key=lambda x: _extract_sort_key(x.get("filename", "")))
         return results
 
     def find_by_id(self, image_id: str) -> dict | None:
