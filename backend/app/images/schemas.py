@@ -88,8 +88,8 @@ class UploadUrlResponse(BaseModel):
 # Image response
 
 class BoundingBox(BaseModel):
-    x: float = Field(..., ge=0)
-    y: float = Field(..., ge=0)
+    x: float
+    y: float
     width: float = Field(..., gt=0)
     height: float = Field(..., gt=0)
 
