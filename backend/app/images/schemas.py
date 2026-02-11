@@ -23,7 +23,7 @@ class DamageTypeEnum(str, Enum):
     CO = "CO"  # Corrosion
     LO = "LO"  # Loss of Section
     DE = "DE"  # Delamination
-    BG = "BG"  # Bulging
+    BG = "BG"  # Biological Growth
     CF = "CF"  # Collision/Fire
     RS = "RS"  # Rust Staining
     ER = "ER"  # Erosion

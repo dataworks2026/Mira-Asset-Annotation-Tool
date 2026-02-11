@@ -82,7 +82,7 @@ export const DAMAGE_TYPES_BY_CATEGORY: Record<IndustryCategory, DamageType[]> = 
     { code: "CO", label: "Corrosion" },
     { code: "LO", label: "Loss of Section" },
     { code: "DE", label: "Delamination" },
-    { code: "BG", label: "Bulging" },
+    { code: "BG", label: "Biological Growth" },
     { code: "CF", label: "Collision/Fire" },
     { code: "RS", label: "Rust Staining" },
     { code: "ER", label: "Erosion" },
