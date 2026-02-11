@@ -139,6 +139,23 @@ export function useImages() {
 
         await processQueue();
 
+        // Collect successfully uploaded image IDs
+        const successfulImageIds = urlResponse.upload_urls
+          .filter((_, index) => progress[index].status === "done")
+          .map((urlInfo) => urlInfo.image_id);
+
+        // Confirm successful uploads to backend (so they count toward total_images)
+        if (successfulImageIds.length > 0) {
+          try {
+            await api.post("/api/images/confirm-upload", {
+              image_ids: successfulImageIds,
+            });
+          } catch (err) {
+            console.error("Failed to confirm uploads:", err);
+            // Don't throw - uploads succeeded, just confirmation failed
+          }
+        }
+
         // Refresh images
         await fetchImages(inspectionId);
       } finally {

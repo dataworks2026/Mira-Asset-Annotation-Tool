@@ -17,14 +17,30 @@ class AnnotationStatusEnum(str, Enum):
 
 
 class DamageTypeEnum(str, Enum):
-    CR = "CR"
-    SP = "SP"
-    CO = "CO"
-    LO = "LO"
-    DE = "DE"
-    BG = "BG"
-    CF = "CF"
-    RS = "RS"
+    # Coastal damage types
+    CR = "CR"  # Cracking
+    SP = "SP"  # Spalling
+    CO = "CO"  # Corrosion
+    LO = "LO"  # Loss of Section
+    DE = "DE"  # Delamination
+    BG = "BG"  # Biological Growth
+    CF = "CF"  # Collision/Fire
+    RS = "RS"  # Rust Staining
+    ER = "ER"  # Erosion
+    SC = "SC"  # Scour
+    MG = "MG"  # Marine Growth
+    # Railway damage types
+    WR = "WR"  # Wear
+    DF = "DF"  # Deformation
+    BK = "BK"  # Broken Component
+    MS = "MS"  # Missing Component
+    AL = "AL"  # Alignment Issue
+    # Wind damage types
+    LT = "LT"  # Lightning Damage
+    IC = "IC"  # Ice Damage
+    DL = "DL"  # Delamination
+    IM = "IM"  # Impact Damage
+    OL = "OL"  # Oil Leak
 
 
 # --- Spatial Awareness Enums ---
@@ -148,6 +164,12 @@ class ImageListResponse(BaseModel):
 
 class SaveAnnotationsRequest(BaseModel):
     annotations: list[AnnotationData]
+
+
+# Confirm upload success
+
+class ConfirmUploadRequest(BaseModel):
+    image_ids: list[str] = Field(..., description="List of image IDs that were successfully uploaded to S3")
 
 
 # Update image metadata

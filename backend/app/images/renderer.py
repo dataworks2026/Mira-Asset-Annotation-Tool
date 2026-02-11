@@ -26,7 +26,7 @@ DAMAGE_LABELS: dict[str, str] = {
     "CO": "Corrosion",
     "LO": "Loss of Section",
     "DE": "Delamination",
-    "BG": "Bulging",
+    "BG": "Biological Growth",
     "CF": "Collision/Fire",
     "RS": "Rust Staining",
 }
@@ -40,9 +40,14 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         return ImageFont.load_default()
 
 
-def _build_label(annotation: dict) -> str:
+def _build_label(annotation: dict, segment: str | None = None) -> str:
     """Build compact annotation label."""
     parts: list[str] = []
+
+    # Add segment code first if available (image location segment)
+    if segment:
+        parts.append(segment)
+
     damage_code = annotation.get("damage_type")
     if damage_code:
         parts.append(damage_code)
@@ -52,19 +57,26 @@ def _build_label(annotation: dict) -> str:
         sev_label = SEVERITY_LABELS.get(severity, "")
         parts.append(f"Sev {severity}" + (f" ({sev_label})" if sev_label else ""))
 
-    component = annotation.get("component")
-    if component:
+    # Use new structural_segments field, fallback to old component field
+    structural_segments = annotation.get("structural_segments") or annotation.get("component")
+    if structural_segments:
         # Support both legacy string and new list format
-        if isinstance(component, list):
-            parts.append(", ".join(component))
+        if isinstance(structural_segments, list):
+            parts.append(", ".join(structural_segments))
         else:
-            parts.append(component)
+            parts.append(structural_segments)
 
     return " | ".join(parts) if parts else ""
 
 
-def render_annotations(image_bytes: bytes, annotations: list[dict]) -> bytes:
-    """Draw annotations, return JPEG bytes."""
+def render_annotations(image_bytes: bytes, annotations: list[dict], segment: str | None = None) -> bytes:
+    """Draw annotations, return JPEG bytes.
+
+    Args:
+        image_bytes: Raw image data
+        annotations: List of annotation dictionaries
+        segment: Optional segment code to display on labels (e.g., 'Segment 1', 'Bay A')
+    """
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw_overlay = ImageDraw.Draw(overlay)
@@ -106,7 +118,7 @@ def render_annotations(image_bytes: bytes, annotations: list[dict]) -> bytes:
             )
 
         # Draw label above shape
-        label = _build_label(annot)
+        label = _build_label(annot, segment)
         if label:
             text_bbox = font.getbbox(label)
             text_w = text_bbox[2] - text_bbox[0]

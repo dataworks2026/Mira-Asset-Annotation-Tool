@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 from app.config import settings
 from app.database import get_client
@@ -46,6 +47,16 @@ app.add_middleware(
 
 
 # Global exception handlers
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"Validation error for {request.url}: {exc.errors()}")
+    logger.error(f"Request body: {await request.body()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
 
 @app.exception_handler(S3ServiceUnavailableError)
 async def s3_unavailable_handler(request: Request, exc: S3ServiceUnavailableError):

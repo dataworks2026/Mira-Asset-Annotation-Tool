@@ -28,6 +28,33 @@ def _sanitize_folder_name(name: str) -> str:
     return sanitized
 
 
+def confirm_upload_success(
+    image_ids: list[str],
+    image_repo: ImageRepository | None = None,
+) -> dict:
+    """
+    Mark images as successfully uploaded to S3.
+    Frontend calls this after successful S3 PUT.
+    """
+    repo = image_repo or ImageRepository()
+    from datetime import datetime, timezone
+
+    result = repo._collection.update_many(
+        {"image_id": {"$in": image_ids}},
+        {
+            "$set": {
+                "upload_completed": True,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+
+    return {
+        "confirmed": result.modified_count,
+        "requested": len(image_ids),
+    }
+
+
 def create_upload_urls(
     inspection_id: str,
     files: list[dict],
@@ -54,6 +81,15 @@ def create_upload_urls(
             logger.warning(f"Skipping file {f['filename']} - exceeds {MAX_FILE_SIZE/1024/1024}MB limit")
             continue
 
+        # Delete any existing record with same filename (handles retries)
+        # This is lightweight - single DELETE query per file
+        repo._collection.delete_many({
+            "inspection_id": inspection_id,
+            "filename": f["filename"],
+            "deleted_at": None,
+        })
+
+        # Create new record
         image_id = str(uuid.uuid4())
 
         # Generate S3 key based on format version
@@ -86,6 +122,7 @@ def create_upload_urls(
             "annotation_status": AnnotationStatusEnum.not_started.value,
             "annotations": [],
             "num_annotations": 0,
+            "upload_completed": False,  # Mark as not uploaded until frontend confirms
             "uploaded_at": now,
             "updated_at": None,
             "deleted_at": None,
@@ -110,11 +147,12 @@ def get_images_by_inspection(
     repo = image_repo or ImageRepository()
     results = repo.find_by_inspection(inspection_id)
 
-    # Only generate presigned URLs if requested (for performance)
+    # Generate proxy URLs instead of presigned S3 URLs
+    # This eliminates CORS issues and improves caching
     if include_urls:
-        s3 = get_s3_service()
         for doc in results:
-            doc["s3_url"] = s3.generate_presigned_download_url(doc["s3_key"])
+            # Frontend will use: /api/images/{image_id}/view
+            doc["s3_url"] = f"/api/images/{doc['image_id']}/view"
     else:
         # Set empty string for s3_url when not included
         for doc in results:
@@ -128,7 +166,6 @@ def save_annotations(
     annotations: list[dict],
     image_repo: ImageRepository | None = None,
 ) -> dict | None:
-    s3 = get_s3_service()
     repo = image_repo or ImageRepository()
 
     doc = repo.find_by_id(image_id)
@@ -155,7 +192,8 @@ def save_annotations(
     updated = repo.find_by_id(image_id)
     if updated is None:
         return None
-    updated["s3_url"] = s3.generate_presigned_download_url(updated["s3_key"])
+    # Use proxy URL instead of presigned S3 URL
+    updated["s3_url"] = f"/api/images/{image_id}/view"
     return updated
 
 
@@ -163,14 +201,14 @@ def get_image_by_id(
     image_id: str,
     image_repo: ImageRepository | None = None,
 ) -> dict | None:
-    s3 = get_s3_service()
     repo = image_repo or ImageRepository()
 
     doc = repo.find_by_id(image_id)
     if doc is None:
         return None
 
-    doc["s3_url"] = s3.generate_presigned_download_url(doc["s3_key"])
+    # Use proxy URL instead of presigned S3 URL
+    doc["s3_url"] = f"/api/images/{image_id}/view"
     return doc
 
 
@@ -180,7 +218,6 @@ def update_image_metadata(
     image_repo: ImageRepository | None = None,
 ) -> dict | None:
     """Update image metadata (e.g., asset_type, segment, elevation, side_face, latitude, longitude)."""
-    s3 = get_s3_service()
     repo = image_repo or ImageRepository()
 
     doc = repo.find_by_id(image_id)
@@ -198,7 +235,8 @@ def update_image_metadata(
     updated = repo.find_by_id(image_id)
     if updated is None:
         return None
-    updated["s3_url"] = s3.generate_presigned_download_url(updated["s3_key"])
+    # Use proxy URL instead of presigned S3 URL
+    updated["s3_url"] = f"/api/images/{image_id}/view"
     return updated
 
 
@@ -210,12 +248,14 @@ def _build_annotations_json(image_docs: list[dict], inspection_id: str) -> str:
         for ann in doc.get("annotations", []):
             damage_code = ann.get("damage_type")
             severity = ann.get("severity")
-            components = ann.get("component")
-            # Normalize component to list for backwards compat
-            if isinstance(components, str):
-                components = [components] if components else []
-            elif not components:
-                components = []
+
+            # Use new structural_segments field, fallback to old component field for backwards compat
+            structural_segments = ann.get("structural_segments") or ann.get("component")
+            # Normalize to list for backwards compat
+            if isinstance(structural_segments, str):
+                structural_segments = [structural_segments] if structural_segments else []
+            elif not structural_segments:
+                structural_segments = []
 
             annotations_out.append({
                 "annotation_id": ann.get("annotation_id"),
@@ -229,8 +269,8 @@ def _build_annotations_json(image_docs: list[dict], inspection_id: str) -> str:
                     "level": severity,
                     "label": SEVERITY_LABELS.get(severity, "") if severity else "",
                 } if severity else None,
-                "components": [
-                    {"code": c} for c in components
+                "structural_segments": [
+                    {"code": c} for c in structural_segments
                 ],
                 "notes": ann.get("notes"),
                 # Spatial Awareness - defect tracking
@@ -245,6 +285,7 @@ def _build_annotations_json(image_docs: list[dict], inspection_id: str) -> str:
             "segment": doc.get("segment"),
             "elevation": doc.get("elevation"),
             "side_face": doc.get("side_face"),
+            "structural_segments": doc.get("structural_segments", []),
             "annotation_status": doc.get("annotation_status"),
             "num_annotations": doc.get("num_annotations", len(annotations_out)),
             "annotations": annotations_out,

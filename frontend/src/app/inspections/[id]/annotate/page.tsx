@@ -21,7 +21,7 @@ import { Inspection } from "@/types/inspection";
 import { ErrorAlert } from "@/components/ui/ErrorAlert";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { showToast } from "@/components/ui/Toast";
-import { api } from "@/lib/api";
+import { api, getImageUrl } from "@/lib/api";
 import {
   getAssetTypesForCategory,
   IndustryCategory,
@@ -74,6 +74,7 @@ export default function AnnotatePage() {
   const [localLatitudes, setLocalLatitudes] = useState<Record<string, number | undefined>>({});
   const [localLongitudes, setLocalLongitudes] = useState<Record<string, number | undefined>>({});
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [isLocationContextExpanded, setIsLocationContextExpanded] = useState(false);
 
   const canvasRef = useRef<AnnotationCanvasRef>(null);
 
@@ -352,6 +353,26 @@ export default function AnnotatePage() {
 
   const handleSave = useCallback(async () => {
     setSaveError("");
+
+    // Validate: Asset type is required for images with annotations
+    const imagesWithAnnotations = Object.entries(localAnnotations).filter(
+      ([_, annotations]) => annotations.length > 0
+    );
+
+    // Check all images with annotations for missing asset type
+    for (const [imageId] of imagesWithAnnotations) {
+      // Check local state first (most up-to-date), then image data
+      const assetType = localAssetTypes[imageId] || images.find(img => img.image_id === imageId)?.asset_type;
+
+      if (!assetType || assetType.trim() === "") {
+        const imageName = images.find(img => img.image_id === imageId)?.filename || "this image";
+        const msg = `Please select an Asset Type for ${imageName} before saving annotations.`;
+        setSaveError(msg);
+        showToast("error", msg);
+        return; // Stop here - don't save
+      }
+    }
+
     try {
       await saveAllDirty(localAnnotations);
       showToast("success", "Annotations saved");
@@ -360,7 +381,7 @@ export default function AnnotatePage() {
       setSaveError(msg);
       showToast("error", msg);
     }
-  }, [localAnnotations, saveAllDirty]);
+  }, [localAnnotations, localAssetTypes, images, saveAllDirty]);
 
   // Keyboard shortcuts handler
   useEffect(() => {
@@ -532,7 +553,7 @@ export default function AnnotatePage() {
               {currentImage && (
                 <AnnotationCanvas
                   ref={canvasRef}
-                  imageUrl={currentImage.s3_url}
+                  imageUrl={getImageUrl(currentImage.s3_url)}
                   annotations={currentAnnotations}
                   activeTool={isReadOnly ? "select" : activeTool}
                   onAnnotationsChange={handleAnnotationsChange}
@@ -546,15 +567,20 @@ export default function AnnotatePage() {
           <div className="w-72 flex-shrink-0 overflow-y-auto border-l border-gray-200 bg-white p-3 space-y-4">
             {/* Image Asset Type Selector */}
             <div>
-              <h3 className="text-xs font-semibold uppercase text-gray-500 mb-2">
+              <h3 className="text-xs font-semibold uppercase text-gray-500 mb-2 flex items-center gap-1">
                 Image Asset Type
+                <span className="text-red-500">*</span>
               </h3>
               <select
                 value={currentAssetType || ""}
                 onChange={(e) => handleAssetTypeChange(e.target.value)}
                 disabled={isReadOnly}
                 aria-label="Image Asset Type"
-                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                className={`w-full rounded-md border px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 ${
+                  !currentAssetType && currentAnnotations.length > 0
+                    ? "border-red-300 bg-red-50"
+                    : "border-gray-300"
+                }`}
               >
                 <option value="">-- Select Asset Type --</option>
                 {availableAssetTypes.map((at) => (
@@ -563,129 +589,18 @@ export default function AnnotatePage() {
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-gray-400">
-                Set the asset type for this specific image
-              </p>
-            </div>
-
-            {/* Spatial Awareness Fields */}
-            <div className="rounded-lg border border-blue-100 bg-blue-50/30 p-3 space-y-2.5">
-              <h3 className="text-xs font-semibold uppercase text-blue-700 mb-2">
-                Location Context
-              </h3>
-
-              {/* Segment */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Segment/Bay
-                </label>
-                <input
-                  type="text"
-                  value={
-                    currentImage
-                      ? localSegments[currentImage.image_id] || currentImage.segment || ""
-                      : ""
-                  }
-                  onChange={(e) => handleSpatialFieldChange("segment", e.target.value)}
-                  disabled={isReadOnly}
-                  placeholder="e.g., Segment 1, Bay 3"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
-                />
-              </div>
-
-              {/* Elevation */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Elevation
-                </label>
-                <select
-                  value={
-                    currentImage
-                      ? localElevations[currentImage.image_id] || currentImage.elevation || ""
-                      : ""
-                  }
-                  onChange={(e) => handleSpatialFieldChange("elevation", e.target.value)}
-                  disabled={isReadOnly}
-                  aria-label="Elevation Zone"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
-                >
-                  <option value="">-- Select --</option>
-                  {ELEVATION_ZONES.map((zone) => (
-                    <option key={zone.value} value={zone.value}>
-                      {zone.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Side/Face */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Side/Face
-                </label>
-                <select
-                  value={
-                    currentImage
-                      ? localSideFaces[currentImage.image_id] || currentImage.side_face || ""
-                      : ""
-                  }
-                  onChange={(e) => handleSpatialFieldChange("side_face", e.target.value)}
-                  disabled={isReadOnly}
-                  aria-label="Side Face Orientation"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
-                >
-                  <option value="">-- Select --</option>
-                  {SIDE_FACE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* GPS Coordinates */}
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Latitude
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={
-                      currentImage
-                        ? (localLatitudes[currentImage.image_id] ?? currentImage.latitude ?? "")
-                        : ""
-                    }
-                    onChange={(e) => handleGPSFieldChange("latitude", e.target.value)}
-                    disabled={isReadOnly}
-                    placeholder="e.g., 40.7128"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Longitude
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={
-                      currentImage
-                        ? (localLongitudes[currentImage.image_id] ?? currentImage.longitude ?? "")
-                        : ""
-                    }
-                    onChange={(e) => handleGPSFieldChange("longitude", e.target.value)}
-                    disabled={isReadOnly}
-                    placeholder="e.g., -74.0060"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
-                  />
-                </div>
-              </div>
-
-              <p className="text-xs text-gray-500 pt-1">
-                Track defect location across inspections
-              </p>
+              {!currentAssetType && currentAnnotations.length > 0 ? (
+                <p className="mt-1 text-xs text-red-600 flex items-start gap-1">
+                  <svg className="h-3 w-3 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  Required: Select asset type before saving annotations
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-gray-400">
+                  Set the asset type for this specific image
+                </p>
+              )}
             </div>
 
             {/* Annotations List */}
@@ -714,6 +629,145 @@ export default function AnnotatePage() {
                 assetType={currentAssetType}
                 industryCategory={industryCategory}
               />
+            </div>
+
+            {/* Location Context - Collapsible */}
+            <div className="rounded-lg border border-blue-100 bg-blue-50/30">
+              <button
+                type="button"
+                onClick={() => setIsLocationContextExpanded(!isLocationContextExpanded)}
+                className="w-full flex items-center justify-between p-3 text-left hover:bg-blue-50/50 transition-colors"
+              >
+                <h3 className="text-xs font-semibold uppercase text-blue-700 flex items-center gap-2">
+                  <span>Location Context</span>
+                  <span className="text-xs font-normal text-gray-500 normal-case">(Optional)</span>
+                </h3>
+                <svg
+                  className={`w-4 h-4 text-blue-700 transition-transform ${isLocationContextExpanded ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {isLocationContextExpanded && (
+                <div className="p-3 pt-0 space-y-2.5">
+                  {/* Segment */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Segment/Bay
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        currentImage
+                          ? localSegments[currentImage.image_id] || currentImage.segment || ""
+                          : ""
+                      }
+                      onChange={(e) => handleSpatialFieldChange("segment", e.target.value)}
+                      disabled={isReadOnly}
+                      placeholder="e.g., Segment 1, Bay 3"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                    />
+                  </div>
+
+                  {/* Elevation */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Elevation
+                    </label>
+                    <select
+                      value={
+                        currentImage
+                          ? localElevations[currentImage.image_id] || currentImage.elevation || ""
+                          : ""
+                      }
+                      onChange={(e) => handleSpatialFieldChange("elevation", e.target.value)}
+                      disabled={isReadOnly}
+                      aria-label="Elevation Zone"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                    >
+                      <option value="">-- Select --</option>
+                      {ELEVATION_ZONES.map((zone) => (
+                        <option key={zone.value} value={zone.value}>
+                          {zone.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Side/Face */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Side/Face
+                    </label>
+                    <select
+                      value={
+                        currentImage
+                          ? localSideFaces[currentImage.image_id] || currentImage.side_face || ""
+                          : ""
+                      }
+                      onChange={(e) => handleSpatialFieldChange("side_face", e.target.value)}
+                      disabled={isReadOnly}
+                      aria-label="Side Face Orientation"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                    >
+                      <option value="">-- Select --</option>
+                      {SIDE_FACE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* GPS Coordinates */}
+                  <div className="grid grid-cols-2 gap-2 pt-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Latitude
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={
+                          currentImage
+                            ? (localLatitudes[currentImage.image_id] ?? currentImage.latitude ?? "")
+                            : ""
+                        }
+                        onChange={(e) => handleGPSFieldChange("latitude", e.target.value)}
+                        disabled={isReadOnly}
+                        placeholder="e.g., 40.7128"
+                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Longitude
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={
+                          currentImage
+                            ? (localLongitudes[currentImage.image_id] ?? currentImage.longitude ?? "")
+                            : ""
+                        }
+                        onChange={(e) => handleGPSFieldChange("longitude", e.target.value)}
+                        disabled={isReadOnly}
+                        placeholder="e.g., -74.0060"
+                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-gray-500 pt-1">
+                    Track defect location across inspections
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

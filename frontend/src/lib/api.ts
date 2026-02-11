@@ -95,3 +95,22 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+
+/**
+ * Convert a relative API image URL to a full URL.
+ * This is needed because images come from the backend proxy endpoint.
+ * Example: "/api/images/123/view" -> "http://localhost:8000/api/images/123/view"
+ */
+export function getImageUrl(relativeUrl: string): string {
+  if (!relativeUrl) return "";
+  if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) {
+    // Already a full URL (legacy presigned S3 URLs)
+    return relativeUrl;
+  }
+
+  // Get API_URL - use explicit default if env var not set
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  // Relative URL - prepend API_URL
+  return `${baseUrl}${relativeUrl}`;
+}

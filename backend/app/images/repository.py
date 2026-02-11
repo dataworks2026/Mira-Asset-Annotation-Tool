@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from pymongo.collection import Collection
@@ -5,6 +6,32 @@ from pymongo.collection import Collection
 from app.database import get_collection
 
 _PROJECTION = {"_id": 0}
+
+
+def _extract_sort_key(filename: str) -> tuple[str, int]:
+    """Extract sort key from filename for alphabetic + numeric sorting.
+
+    Returns tuple of (alphabetic_prefix, numeric_value)
+    - Alphabetic prefix: all non-digit characters before first number
+    - Numeric value: first number found in filename
+
+    Examples:
+        - "GI_SL1.JPG" -> ("GI_SL", 1)
+        - "Yankee Pier-04.jpg" -> ("Yankee Pier-", 4)
+        - "photo123.png" -> ("photo", 123)
+        - "no_numbers.jpg" -> ("no_numbers.jpg", 999999)
+    """
+    # Find first number in filename
+    match = re.search(r'\d+', filename)
+
+    if match:
+        # Extract prefix (everything before the first number)
+        prefix = filename[:match.start()]
+        number = int(match.group())
+        return (prefix, number)
+
+    # No number found - use entire filename as prefix, sort to end
+    return (filename, 999999)
 
 
 class ImageRepository:
@@ -18,9 +45,12 @@ class ImageRepository:
         results = []
         for doc in self._collection.find(
             {"inspection_id": inspection_id, "deleted_at": None}, _PROJECTION
-        ).sort("uploaded_at", 1):
+        ):
             self._serialize_dates(doc)
             results.append(doc)
+
+        # Sort by alphabetic prefix, then by number (ascending)
+        results.sort(key=lambda x: _extract_sort_key(x.get("filename", "")))
         return results
 
     def find_by_id(self, image_id: str) -> dict | None:
@@ -54,8 +84,16 @@ class ImageRepository:
         )
 
     def count_by_inspection(self, inspection_id: str) -> int:
+        """Count successfully uploaded images. For backwards compatibility, also count images without upload_completed field (legacy)."""
         return self._collection.count_documents(
-            {"inspection_id": inspection_id, "deleted_at": None}
+            {
+                "inspection_id": inspection_id,
+                "deleted_at": None,
+                "$or": [
+                    {"upload_completed": True},  # New images
+                    {"upload_completed": {"$exists": False}}  # Legacy images (backwards compatibility)
+                ]
+            }
         )
 
     def soft_delete_by_inspection(self, inspection_id: str) -> int:

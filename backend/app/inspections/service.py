@@ -311,7 +311,8 @@ def complete_inspection(
                 continue
             try:
                 raw_bytes = s3.download_object(img["s3_key"])
-                annotated_bytes = render_annotations(raw_bytes, img["annotations"])
+                segment = img.get("segment")
+                annotated_bytes = render_annotations(raw_bytes, img["annotations"], segment)
 
                 # Generate annotated path based on version
                 s3_key_version = img.get("s3_key_version", "v1")
