@@ -441,6 +441,13 @@ const AnnotationCanvasInner = forwardRef<
       const updated = [...annotationsRef.current, newAnnotation];
       annotationsRef.current = updated;
       onAnnotationsChange(updated);
+
+      // Auto-select the newly created annotation to open the classification panel
+      if (!readOnly) {
+        canvas.setActiveObject(shape);
+        onSelectionChange(annotationId);
+        canvas.renderAll();
+      }
     };
 
     const handleSelection = () => {
