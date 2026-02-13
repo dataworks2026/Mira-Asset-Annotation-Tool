@@ -28,6 +28,7 @@ class DamageTypeEnum(str, Enum):
     ER = "ER"  # Erosion
     SC = "SC"  # Scour
     MG = "MG"  # Marine Growth
+    RS = "RS"  # Rust Staining (legacy - kept for existing data)
     # Railway damage types
     WR = "WR"  # Wear
     DF = "DF"  # Deformation
