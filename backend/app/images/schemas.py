@@ -25,7 +25,6 @@ class DamageTypeEnum(str, Enum):
     DE = "DE"  # Decay (Biological deterioration of timber)
     BG = "BG"  # Biological Growth
     CF = "CF"  # Coating Failure
-    RS = "RS"  # Rust Staining
     ER = "ER"  # Erosion
     SC = "SC"  # Scour
     MG = "MG"  # Marine Growth

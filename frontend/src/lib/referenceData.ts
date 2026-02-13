@@ -84,7 +84,6 @@ export const DAMAGE_TYPES_BY_CATEGORY: Record<IndustryCategory, DamageType[]> = 
     { code: "DE", label: "Decay" },
     { code: "BG", label: "Biological Growth" },
     { code: "CF", label: "Coating Failure" },
-    { code: "RS", label: "Rust Staining" },
     { code: "ER", label: "Erosion" },
     { code: "SC", label: "Scour" },
     { code: "MG", label: "Marine Growth" },
