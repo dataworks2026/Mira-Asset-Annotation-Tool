@@ -22,9 +22,9 @@ class DamageTypeEnum(str, Enum):
     SP = "SP"  # Spalling
     CO = "CO"  # Corrosion
     LO = "LO"  # Loss of Section
-    DE = "DE"  # Delamination
+    DE = "DE"  # Decay (Biological deterioration of timber)
     BG = "BG"  # Biological Growth
-    CF = "CF"  # Collision/Fire
+    CF = "CF"  # Coating Failure
     RS = "RS"  # Rust Staining
     ER = "ER"  # Erosion
     SC = "SC"  # Scour
@@ -77,6 +77,27 @@ class SideFaceEnum(str, Enum):
     right = "right"
     interior = "interior"
     exterior = "exterior"
+
+
+class StructuralSegmentEnum(str, Enum):
+    """Structural component codes for damage tracking"""
+    # Deck Components
+    DT = "DT"  # Deck - Topside
+    DU = "DU"  # Deck - Underside
+    # Pile Components
+    CP = "CP"  # Pile Caps / Concrete Caps
+    PT = "PT"  # Timber Piles
+    PS = "PS"  # Steel Piles
+    # Water Interface
+    SZ = "SZ"  # Splash Zone
+    # Protection Systems
+    FD = "FD"  # Fender System
+    BH = "BH"  # Bulkhead / Seawall
+    # Structural Elements
+    SS = "SS"  # Steel Superstructure / Framing
+    AR = "AR"  # Anchors / Tie Rods
+    AP = "AP"  # Appurtenances & Fixtures
+    BP = "BP"  # Barge Pier (barge platform)
 
 
 # Upload request/response

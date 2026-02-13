@@ -14,9 +14,9 @@ SEVERITY_COLORS: dict[int, tuple[int, int, int]] = {
 DEFAULT_COLOR: tuple[int, int, int] = (255, 0, 0)
 
 SEVERITY_LABELS: dict[int, str] = {
-    1: "Good",
-    2: "Fair",
-    3: "Poor",
+    1: "Minor",
+    2: "Moderate",
+    3: "Advanced",
     4: "Severe",
 }
 
@@ -25,9 +25,9 @@ DAMAGE_LABELS: dict[str, str] = {
     "SP": "Spalling",
     "CO": "Corrosion",
     "LO": "Loss of Section",
-    "DE": "Delamination",
+    "DE": "Decay",
     "BG": "Biological Growth",
-    "CF": "Collision/Fire",
+    "CF": "Coating Failure",
     "RS": "Rust Staining",
 }
 

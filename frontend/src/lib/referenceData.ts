@@ -81,9 +81,9 @@ export const DAMAGE_TYPES_BY_CATEGORY: Record<IndustryCategory, DamageType[]> = 
     { code: "SP", label: "Spalling" },
     { code: "CO", label: "Corrosion" },
     { code: "LO", label: "Loss of Section" },
-    { code: "DE", label: "Delamination" },
+    { code: "DE", label: "Decay" },
     { code: "BG", label: "Biological Growth" },
-    { code: "CF", label: "Collision/Fire" },
+    { code: "CF", label: "Coating Failure" },
     { code: "RS", label: "Rust Staining" },
     { code: "ER", label: "Erosion" },
     { code: "SC", label: "Scour" },
@@ -126,21 +126,21 @@ export function getDamageTypesForCategory(category: IndustryCategory | undefined
 export const SEVERITY_LEVELS: SeverityLevel[] = [
   {
     level: 1,
-    label: "Good",
+    label: "Minor",
     color: "text-green-700",
     fillColor: "rgba(34, 197, 94, 0.15)",
     strokeColor: "rgba(34, 197, 94, 0.8)",
   },
   {
     level: 2,
-    label: "Fair",
+    label: "Moderate",
     color: "text-yellow-700",
     fillColor: "rgba(234, 179, 8, 0.15)",
     strokeColor: "rgba(234, 179, 8, 0.8)",
   },
   {
     level: 3,
-    label: "Poor",
+    label: "Advanced",
     color: "text-orange-700",
     fillColor: "rgba(249, 115, 22, 0.15)",
     strokeColor: "rgba(249, 115, 22, 0.8)",
@@ -376,6 +376,7 @@ export const STRUCTURAL_SEGMENTS: StructuralSegment[] = [
   { code: "SS", name: "Steel Superstructure / Framing", category: "Structure" },
   { code: "AR", name: "Anchors / Tie Rods", category: "Structure" },
   { code: "AP", name: "Appurtenances & Fixtures", category: "Other" },
+  { code: "BP", name: "Barge Pier (barge platform)", category: "Other" },
 ];
 
 export function getStructuralSegmentByCode(code: string): StructuralSegment | undefined {
