@@ -28,6 +28,7 @@ DAMAGE_LABELS: dict[str, str] = {
     "DE": "Decay",
     "BG": "Biological Growth",
     "CF": "Coating Failure",
+    "RS": "Rust Staining",
 }
 
 

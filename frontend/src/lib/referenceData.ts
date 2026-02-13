@@ -87,6 +87,7 @@ export const DAMAGE_TYPES_BY_CATEGORY: Record<IndustryCategory, DamageType[]> = 
     { code: "ER", label: "Erosion" },
     { code: "SC", label: "Scour" },
     { code: "MG", label: "Marine Growth" },
+    { code: "RS", label: "Rust Staining" },
   ],
   railway: [
     { code: "CR", label: "Cracking" },
